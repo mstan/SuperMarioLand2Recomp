@@ -7,7 +7,16 @@ typedef struct {
     int widescreen;   /* adaptive-widescreen enabled */
     int width;        /* -1 = fit window, else fixed game-pixel width */
     int dx;           /* DX colour body selected (0 = faithful V1.0 body) */
+    int spawns;       /* SML2_SPAWNS_ORIGINAL / SML2_SPAWNS_EXTENDED */
 } SML2ModSettings;
+
+/* Where the game's enemy spawn scanner is allowed to look. Original leaves the
+ * scan window at the ROM's own camX +- 112, so spawn timing -- which is
+ * gameplay, not presentation -- is exactly vanilla and enemies pop in at the
+ * native screen edge inside a wide view. Extended moves the window out to the
+ * visible view edge instead. See ADAPTIVE.md. */
+#define SML2_SPAWNS_ORIGINAL 0
+#define SML2_SPAWNS_EXTENDED 1
 
 struct RecompLauncherCModProvider;
 

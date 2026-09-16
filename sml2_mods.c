@@ -25,6 +25,7 @@
 #define CONFIG_NAME "sml2-mods.ini"
 #define ENV_WIDESCREEN "SML2_WIDESCREEN"
 #define ENV_DX "SML2_DX"
+#define ENV_SPAWNS "SML2_SPAWNS"
 
 enum { PKG_WIDESCREEN = 0, PKG_DX, PKG_COUNT };
 
@@ -47,7 +48,7 @@ static const Sml2Package packages[PKG_COUNT] = {
         "Composes a wider view from the level's own block map, widens enemy "
         "activation to match, clamps to the level's scroll boxes and anchors the "
         "status bar to the window edges. The emulated hardware stays native.",
-        1,
+        2,
     },
     [PKG_DX] = {
         "sml2-dx-color", "dx-color", "DX color",
@@ -67,6 +68,11 @@ static const char *const aspects[] = { "Fit", "16:9", "21:9", "32:9" };
 static const int widths[] = { -1, 256, 336, 512 };
 #define ASPECT_COUNT ((int)(sizeof aspects / sizeof *aspects))
 
+/* Index is the SML2_SPAWNS_* value, so the stored integer, the choice list and
+ * the environment override are one table. */
+static const char *const spawn_modes[] = { "Original", "Extended" };
+#define SPAWN_COUNT ((int)(sizeof spawn_modes / sizeof *spawn_modes))
+
 static SML2ModSettings settings;
 static int loaded;
 static char config_path[1024], base_dir[1024], error[160];
@@ -76,7 +82,7 @@ static int valid_width(int width) { return width == -1 || (width >= 160 && width
 static void load(const char *base) {
     if (loaded) return;
     loaded = 1;
-    settings = (SML2ModSettings){ 0, -1, 0 };
+    settings = (SML2ModSettings){ 0, -1, 0, SML2_SPAWNS_ORIGINAL };
     snprintf(base_dir, sizeof(base_dir), "%s%s", base ? base : "",
              base && base[0] && base[strlen(base) - 1] != '/' && base[strlen(base) - 1] != '\\'
                  ? "/" : "");
@@ -91,6 +97,8 @@ static void load(const char *base) {
                 settings.widescreen = value;
             if (!strcmp(key, "Width") && valid_width(value)) settings.width = value;
             if (!strcmp(key, "DX") && (value == 0 || value == 1)) settings.dx = value;
+            if (!strcmp(key, "Spawns") && value >= 0 && value < SPAWN_COUNT)
+                settings.spawns = value;
         }
         fclose(f);
     }
@@ -115,6 +123,17 @@ static void load(const char *base) {
     }
     const char *dx = getenv(ENV_DX);
     if (dx && dx[0]) settings.dx = atoi(dx) != 0;
+    /* Accepts the choice label either way round -- SML2_SPAWNS=original and
+     * SML2_SPAWNS=Original both select it. */
+    const char *spawns = getenv(ENV_SPAWNS);
+    if (spawns && spawns[0]) {
+        for (int i = 0; i < SPAWN_COUNT; i++) {
+            if (!strcmp(spawns, spawn_modes[i]) ||
+                (spawns[0] == (char)(spawn_modes[i][0] | 0x20) &&
+                 !strcmp(spawns + 1, spawn_modes[i] + 1)))
+                settings.spawns = i;
+        }
+    }
 }
 
 /* The DX body derives its image from the user's ROM with this BPS at boot; with
@@ -254,6 +273,23 @@ static int option_get(void *ctx, const char *package_id, const char *feature_id,
             if (settings.width == widths[i]) COPY(out->value, aspects[i]);
         return 1;
     }
+    /* Spawn timing is gameplay, not presentation, so the default has to be the
+     * game's own: the widened view alone never moves an enemy's spawn point. */
+    if (pkg == PKG_WIDESCREEN && index == 1) {
+        int mode = settings.spawns >= 0 && settings.spawns < SPAWN_COUNT
+                       ? settings.spawns : SML2_SPAWNS_ORIGINAL;
+        out->type = RECOMP_MOD_OPTION_CHOICE;
+        out->choice_count = SPAWN_COUNT;
+        COPY(out->id, "spawns");
+        COPY(out->label, "Enemy spawns");
+        COPY(out->description,
+             "Original keeps the game's own spawn timing, so enemies appear at the "
+             "original screen edge inside the wide view. Extended spawns them at the "
+             "edge of what you can actually see, which changes gameplay.");
+        COPY(out->value, spawn_modes[mode]);
+        COPY(out->default_value, spawn_modes[SML2_SPAWNS_ORIGINAL]);
+        return 1;
+    }
     return 0;
 }
 
@@ -261,12 +297,23 @@ static int choice_get(void *ctx, const char *package_id, const char *feature_id,
                       const char *option, int index, RecompLauncherCModChoice *out) {
     (void)ctx;
     int pkg = feature_index(package_id, feature_id);
-    if (!out || pkg != PKG_WIDESCREEN || !option || strcmp(option, "aspect")) return 0;
-    if (index < 0 || index >= ASPECT_COUNT) return 0;
-    memset(out, 0, sizeof(*out));
-    COPY(out->value, aspects[index]);
-    COPY(out->label, index ? aspects[index] : "Fit to window");
-    return 1;
+    if (!out || pkg != PKG_WIDESCREEN || !option) return 0;
+    if (!strcmp(option, "aspect")) {
+        if (index < 0 || index >= ASPECT_COUNT) return 0;
+        memset(out, 0, sizeof(*out));
+        COPY(out->value, aspects[index]);
+        COPY(out->label, index ? aspects[index] : "Fit to window");
+        return 1;
+    }
+    if (!strcmp(option, "spawns")) {
+        if (index < 0 || index >= SPAWN_COUNT) return 0;
+        memset(out, 0, sizeof(*out));
+        COPY(out->value, spawn_modes[index]);
+        COPY(out->label, index == SML2_SPAWNS_ORIGINAL ? "Original (vanilla timing)"
+                                                       : "Extended (to the view edge)");
+        return 1;
+    }
+    return 0;
 }
 
 static int enable(void *ctx, const char *package_id, const char *feature_id, int enabled) {
@@ -286,6 +333,13 @@ static int set_option(void *ctx, const char *package_id, const char *feature_id,
         for (int i = 0; i < ASPECT_COUNT; i++)
             if (!strcmp(value, aspects[i])) {
                 settings.width = widths[i];
+                return 1;
+            }
+    }
+    if (pkg == PKG_WIDESCREEN && !strcmp(option, "spawns")) {
+        for (int i = 0; i < SPAWN_COUNT; i++)
+            if (!strcmp(value, spawn_modes[i])) {
+                settings.spawns = i;
                 return 1;
             }
     }
@@ -334,8 +388,9 @@ static int commit(void *ctx, const char *image) {
     char temporary[1050];
     snprintf(temporary, sizeof(temporary), "%s.tmp", config_path);
     FILE *f = fopen(temporary, "w");
-    int ok = f && fprintf(f, "[Mods]\nAdaptiveWidescreen=%d\nWidth=%d\nDX=%d\n",
-                          settings.widescreen, settings.width, settings.dx) > 0;
+    int ok = f && fprintf(f, "[Mods]\nAdaptiveWidescreen=%d\nWidth=%d\nDX=%d\nSpawns=%d\n",
+                          settings.widescreen, settings.width, settings.dx,
+                          settings.spawns) > 0;
     if (f && fclose(f) != 0) ok = 0;
     if (ok) {
 #ifdef _WIN32

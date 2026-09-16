@@ -39,9 +39,9 @@ generated/build/Super_Mario_Land_2.exe
 - **Adaptive widescreen** — Fit to window, 16:9, 21:9, 32:9. See `ADAPTIVE.md`.
 - **DX color** — Super Mario Land 2 DX v1.8.1 by toruzz. Off, the game runs
   faithfully; on, the DX patch is applied to your ROM in memory at boot and the
-  Game Boy Color build runs instead. Separate save file. See `DX.md`.
-  The two mods are mutually exclusive today (widescreen margins are composed
-  with the monochrome tile model); the launcher says so.
+  Game Boy Color build runs instead. Separate save file. Works together with
+  Adaptive widescreen: the wide margins get the DX background attributes too.
+  See `DX.md`.
 
 Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 `.\Launch.ps1 -Faithful` to seed the toggle.

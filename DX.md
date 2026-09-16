@@ -109,33 +109,121 @@ selection changed"; the body that actually boots is always correct.
 
 ## Adaptive widescreen × DX
 
-**The geometry works on DX. The colour does not.** Measured, not assumed: with
-the draw-bank binding below fixed and the gate temporarily lifted, the DX body
-reaches gameplay (`$FF9B` mode 4) at 32:9 and the compositor's block-map decode
-reproduces the game's own BG tilemap **378/378 cells** — the same score the
-faithful body gets.
+**Both mods are on at once.** The wide margins on the DX body are drawn in the
+same colours the hardware draws the native 160 columns in, and the executable
+proves it every frame before it widens anything.
 
-| run | body | model | width | valid | block-map score |
-|---|---|---|---|---|---|
-| widescreen, DX off | `Super_Mario_Land_2` | dmg | 512 | 1 | 378 / 378 |
-| widescreen, DX on | `Super_Mario_Land_2_DX` | cgb | 512 | 1 | **378 / 378** |
+| run | body | model | width | valid | block-map score | attribute score |
+|---|---|---|---|---|---|---|
+| widescreen, DX off | `Super_Mario_Land_2` | dmg | 512 | 1 | 357 / 357 | 0 / 0 (DMG) |
+| widescreen, DX on | `Super_Mario_Land_2_DX` | cgb | 512 | 1 | **357 / 357** | **357 / 357** |
 
-What is missing is colour. The DX cart header says `0xC0` at `0x143`: a CGB-only
-cart whose background cells carry an attribute byte (palette number, VRAM bank,
-flips, priority). The compositor snapshots VRAM bank 0 only and draws every
-margin cell through BG palette 0 — right on a DMG cart, wrong on a CGB one. The
-native 160 columns would be in full colour and the synthesised margins beside
-them would not, which is worse than not widening.
+Over the probe route's 2776 scored gameplay frames on each body: **0 rejections
+by either gate.** Captures: `logs/dx-widescreen/`.
 
-Closing it is not a mechanical port. Margins are synthesised from the **level's
-block map**, not from the hardware BG map, so a margin cell has no attribute
-byte to read; the four-byte block definitions at `$A600` are tile indices only.
-Someone has to find where the hack stores per-block colour first.
+### How the hack colours the background
 
-So the two mods are mutually exclusive today, and that is stated in the launcher
-rather than discovered after Play: with DX color on, the Adaptive widescreen row
-shows "Unavailable while DX color is on…" in the warning colour, and
-`sml2_adaptive_init()` refuses to install the compositor.
+Margins are synthesised from the level's **block map**, not from the hardware BG
+map, so a margin cell has no attribute byte to read. The colour is not stored
+per block either -- the four-byte block definitions at `$A600` are tile indices
+and nothing else, on both images. It is stored **per tile index**:
+
+```
+attribute = MEM_WRAM_BANK2[$D000 + tile_index]
+```
+
+a flat 256-entry table, one per tileset, holding the ordinary CGB BG attribute
+byte (bits 0-2 palette, bit 3 tile VRAM bank, bit 5 X flip, bit 6 Y flip,
+bit 7 BG-over-OBJ priority).
+
+| Binding | Where | Role |
+|---|---|---|
+| Attribute table | `$D000`-`$D0FF`, **WRAM bank 2** | `attr = table[tile]`. Same address as the level's own `$D000` block-map tail, which lives in WRAM bank 1 -- different bank, so a host read must name the bank |
+| Table loader | `21:730E`, `21:732C` | `a = [$A269]` (tileset), `hl = $4000 + a*$100` in ROM bank `$21`, `de = $D000`, `bc = $0100`, `SVBK = 2`, `call $0336` |
+| Tileset selector | `$A269` | the same byte the DX actor-draw-bank dispatcher at `00:07EA` reads |
+| VRAM write queue | `$AA00`, 6-byte records | `dest lo, dest hi, tile0..tile3` for one 16x16 block; `dest hi == 0` terminates. **Unchanged from V1.0** -- so are the block-map readers `00:096C` / `00:0A38` that fill it |
+| Queue drain, V1.0 | `00:0AFB` | writes the four tiles into the tilemap and returns |
+| Queue drain, DX | `00:0AFB` -> `24:79B5` | DX replaces 15 bytes at `00:0AFB` with `3E 24 / EA 00 21 / CD B5 79 / FA 4E A2 / EA 00 21 / C9`. `24:79B5` writes the same four tiles, then rewinds `de` by 3 and `hl` by `$21`, sets `VBK = 1` (`24:79F9`) and `SVBK = 2` (`24:79FE`), and writes `table[tile]` into VRAM bank 1 for each of the four cells (`24:7A0A`: `ld b,$D0 / ld a,[de] / ld c,a / ld a,[bc] / ld [hl+],a`) |
+| BG palette upload | `00:18AF` | `BCPS $FF68` / `BCPD $FF69` from the pointer at `$A1DC`/`$A1DD`; OBJ via `00:18DA` from `$A1DE`/`$A1DF`. This is where "the palettes are changed on the fly" happens |
+
+Both inputs are re-read **every frame** -- the table out of WRAM bank 2, the
+palettes out of the PPU's own CGB palette RAM -- so a mid-level tileset or
+palette change is followed for free, with no cache to invalidate. All reads go
+through the host peek helpers; nothing touches the emulated bus.
+
+The live WRAM table is checked against its ROM source on every probe sample
+(`rom_table_matches`), so the runtime copy is tied to `21:$4000 + tileset*$100`
+rather than to "whatever happens to be in WRAM".
+
+### The per-frame proof (fail closed)
+
+`validate_scene()` in `sml2_adaptive.c` scores the native window every frame and
+falls back to a centred 160x144 image unless both gates pass:
+
+* **tiles** -- block-map decode vs. the hardware tilemap in VRAM bank 0, at 95%
+  or better (unchanged policy);
+* **colour** -- for **every** cell whose tile matched, the derived attribute must
+  equal the hardware attribute in VRAM bank 1. No tolerance.
+
+The grid is 21 x 17 = **357** cells, not 21 x 18. The 18th BG tile row sits
+behind the status-bar window (`WY = 136`) on every gameplay frame and is never
+drawn; V1.0 keeps writing the level into it and DX leaves it at tile `$FF` /
+attribute 0, so scoring it would reject about one DX frame in five over pixels
+that are not shown. `sml2_view` reports `score`, `attr_score`,
+`attr_prio_diff`, `cgb`, `attr_table`, `tileset`, `sprite_pal_mask` and the
+always-on counters `gate_scene`, `gate_tile_fail`, `gate_attr_fail`;
+`sml2_score_map` prints the per-cell outcome plus the first mismatching cells in
+full (block id, both tiles, both attributes).
+
+### What bit 7 costs, and why it is not derivable
+
+The colour gate is on bits 0-6. Bit 7 (BG-over-OBJ priority) selects no colour,
+and it is **not a function of the level**: the hack patched each of the ROM's
+*direct* tilemap writers with an attribute counterpart, and one of them forces
+the bit.
+
+```
+01:5B40  V1.0's "Mario used this block" writer: stamps tiles $F8-$FB and
+         sets block id 7, then (DX) jumps to 01:4100 instead of $59DF
+01:411A  FA F8 D0   ld a,[$D0F8]
+01:411D  F6 80      or $80          <- priority forced
+01:411F  22 77 19 22 77              the 2x2 attribute quad
+```
+
+The *same* block id, scrolled in from the authored level data through the
+ordinary queue drain, gets the table value with bit 7 clear. Measured on the DX
+body over the probe route: tiles `$F8`-`$FB` appear in VRAM bank 1 with
+attribute `$87` (174 samples) **and** with `$07` (166 samples) -- same tile,
+same block id, different write history. The host derives bit 7 from the table,
+i.e. the value the queue drain would produce (and does produce again on the next
+scroll), and reports the divergence as `attr_prio_diff` rather than hiding it.
+The visible cost is confined to whether a sprite passes in front of or behind a
+just-used block **in a margin**.
+
+### Sprites in the margins
+
+Margin sprites are captured metasprite pieces and carry the ROM's own attribute
+byte, so their CGB palette and tile bank need no derivation. Measured over the
+probe samples: **7 of the 8 OBJ palettes** used (`sprite_pal_mask`), and 4-5
+pieces per frame fetched from **VRAM bank 1**. That second number is why
+`draw_sprite()` had to stop masking the tile address with `0x1FFE` *after*
+adding the bank offset -- the mask cleared bit 13 and sent every bank-1 sprite
+back to bank 0. Inert on the faithful body, which has one bank.
+
+### Two things this measurement disproved
+
+* *"The attribute table is mutated during play."* It is not: 400 consecutive
+  frames of the DX body, byte-comparing `$D000`-`$D0FF` in WRAM bank 2 -- zero
+  changes. The bit-7 divergence is a second writer, not a moving table.
+* *"The DX block-map decode dips because DX streams VRAM differently."* It does
+  not. With the hidden row excluded, the tile-score histogram over the probe
+  route is **identical on both bodies**: 2025 frames at 357/357, 8 at 355, 67 at
+  353. The residue is a pre-existing, body-independent gap -- the ROM's direct
+  writers stamp block id `$7F` as four copies of tile `$7F` and block id 7 as
+  `$F8`-`$FB`, bypassing the `$A600` block definitions, so a just-changed block
+  reads back one tile on hardware and another out of the block map until the
+  next scroll redraws it. The 95% tile gate already covers it, which is why the
+  colour gate scores only the cells whose tile matched.
 
 ### Bindings, V1.0 vs DX
 
@@ -158,12 +246,17 @@ per-body table is only a sanity gate on which banks may host it at all.
 
 ## Known gaps
 
-1. **Widescreen on DX is gated off for colour**, as measured above. The geometry
-   is proven; the per-block colour source in the hack is unidentified.
-2. **Branding lags one launch** (above).
-3. **`recomp/sml2_v10.sym` is faithful-only.** The disassembly targets the
+1. **BG priority (attribute bit 7) is not derivable for margin cells** written
+   by the hack's direct block writers, as measured above. Colour is exact; only
+   sprite-behind-block layering in a margin can differ.
+2. **Live play coverage is Mushroom Zone level 1 (tileset 0)**, the same level
+   the faithful body's widescreen validation uses. Other tilesets are covered by
+   construction -- the table is re-read each frame from
+   `21:$4000 + [$A269]*$100` -- and by the per-frame gate, not by a play-test.
+3. **Branding lags one launch** (above).
+4. **`recomp/sml2_v10.sym` is faithful-only.** The disassembly targets the
    unpatched V1.0; the DX config deliberately omits `symbols`.
-4. **The pre-patched DX image is not accepted as a user ROM.** The body already
+5. **The pre-patched DX image is not accepted as a user ROM.** The body already
    skips its patch step when handed an image that is already the expected one
    (`launcher_image_matches_sha256`), so this is one CRC away in
    `game_get_valid_crcs()` — deliberately not taken, to keep "one supported

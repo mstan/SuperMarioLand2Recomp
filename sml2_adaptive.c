@@ -122,6 +122,10 @@ static struct {
      * reached the two scoring gates at all. */
     unsigned gate_scene, gate_tile_fail, gate_attr_fail;
     unsigned gate_reason[SML2_REJ_COUNT];
+    /* Cells whose attribute BYTE differed from the hardware's but whose
+     * painted pixels did not. Reported, never a rejection: the difference is
+     * real and worth seeing, it just is not visible. */
+    unsigned attr_byte_diff;
     unsigned gate_frames;          /* frames validate_scene() was called on  */
     unsigned flips;                /* wide <-> native transitions            */
     int reject;                    /* this frame's reason, 0 when accepted   */
@@ -457,6 +461,45 @@ static void gate_reject(GBContext *ctx, int reason) {
     s.gate_log_seq++;
 }
 
+/* Would the derived attribute paint this cell EXACTLY as the hardware's
+ * attribute does?
+ *
+ * The claim the margins rest on is about COLOUR, not about attribute bytes, and
+ * the two are not the same claim. A cell whose tile is blank in the bank both
+ * attributes select shows nothing but colour 0 of its palette, so two different
+ * palette numbers that agree on colour 0 paint identical pixels. That is not a
+ * hypothetical: over the attract demo the DX body leaves whole regions of
+ * blank tile $FF carrying attribute 1 where the hack's table says 0 -- tile $FF
+ * is all zeroes in VRAM bank 0 and both palettes have white at index 0, so not
+ * one pixel differs, yet a byte comparison rejected 2492 frames for it and
+ * pillarboxed the view for sixty frames at a time.
+ *
+ * So compare what gets painted. The fast path is the byte compare (true for
+ * essentially every cell); only a differing cell is rendered both ways, 64
+ * pixels, and that happens a handful of times per frame at most. This also
+ * makes the bit-7 exemption fall out rather than be asserted: BG-over-OBJ
+ * priority selects no BG colour, so it can never change the answer here.
+ */
+static int cell_paints_same(GBContext *ctx, uint8_t tile, uint8_t da, uint8_t ha) {
+    if (!((da ^ ha) & 0x7Fu)) return 1;
+    for (int row = 0; row < 8; row++) {
+        unsigned aa = tile_row_addr(tile, (da & SML2_ATTR_FLIP_Y) ? 7 - row : row, da);
+        unsigned ab = tile_row_addr(tile, (ha & SML2_ATTR_FLIP_Y) ? 7 - row : row, ha);
+        uint8_t alo = s.vram[aa], ahi = s.vram[aa + 1];
+        uint8_t blo = s.vram[ab], bhi = s.vram[ab + 1];
+        for (int x = 0; x < 8; x++) {
+            int ba = (da & SML2_ATTR_FLIP_X) ? x : 7 - x;
+            int bb = (ha & SML2_ATTR_FLIP_X) ? x : 7 - x;
+            int ca = ((alo >> ba) & 1) | (((ahi >> ba) & 1) << 1);
+            int cb = ((blo >> bb) & 1) | (((bhi >> bb) & 1) << 1);
+            if (shade_color(ctx, s.bg_pal, da & SML2_ATTR_PALETTE, ca, s.bgp) !=
+                shade_color(ctx, s.bg_pal, ha & SML2_ATTR_PALETTE, cb, s.bgp))
+                return 0;
+        }
+    }
+    return 1;
+}
+
 /* ---- scene validation ----------------------------------------------------
  * Two independent gates. The cheap one is the game's own mode enum plus the
  * flags that distinguish a bonus room or a pipe transition from scrolling
@@ -527,10 +570,13 @@ static int validate_scene(GBContext *ctx) {
              * changes no colour, so the gate is on the seven bits that do, and
              * bit-7-only divergences are counted rather than passed over. */
             if (s.cgb && tile_ok) {
-                uint8_t diff = (uint8_t)(s.vram[VRAM_SIZE + cell] ^ attr_for_tile(tile));
+                uint8_t da = attr_for_tile(tile);
+                uint8_t ha = s.vram[VRAM_SIZE + cell];
+                uint8_t diff = (uint8_t)(da ^ ha);
                 atotal++;
-                if (!(diff & 0x7Fu)) ahit++; else miss |= 2u;
+                if (cell_paints_same(ctx, tile, da, ha)) ahit++; else miss |= 2u;
                 if (diff & SML2_ATTR_PRIORITY) aprio++;
+                if (diff & 0x7Fu) s.attr_byte_diff++;
             }
             s.cell_miss[ty * 21 + tx] = miss;
         }
@@ -1163,6 +1209,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,"
         "\"gate_scene\":%u,\"gate_tile_fail\":%u,\"gate_attr_fail\":%u,"
         "\"reject\":\"%s\",\"flips\":%u,\"gate_frames\":%u,\"gate_log_seq\":%u,"
+        "\"attr_byte_diff\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
@@ -1171,7 +1218,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.captures, s.capture_frames, s.rescues, s.ghosts, s.fallbacks,
         s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
         s.reject >= 0 && s.reject < SML2_REJ_COUNT ? k_reject_name[s.reject] : "?",
-        s.flips, s.gate_frames, s.gate_log_seq,
+        s.flips, s.gate_frames, s.gate_log_seq, s.attr_byte_diff,
         s.sprite_pal_mask, s.sprite_bank1, s.frame);
     return 1;
 }

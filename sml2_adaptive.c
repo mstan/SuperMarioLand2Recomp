@@ -78,12 +78,13 @@ enum {
     SML2_REJ_TILE,        /* block-map decode vs hardware tilemap < 95%     */
     SML2_REJ_ATTR,        /* derived CGB attribute != hardware, bits 0-6    */
     SML2_REJ_NOTABLE,     /* CGB body with no DX attribute table            */
+    SML2_REJ_RAMBANK,     /* cart SRAM is not the bank the level lives in   */
     SML2_REJ_COUNT
 };
 
 static const char *const k_reject_name[SML2_REJ_COUNT] = {
     "none", "mode", "bonus", "transition", "lcdc", "window", "camera",
-    "negcoord", "blockid", "tile", "attr", "notable"
+    "negcoord", "blockid", "tile", "attr", "notable", "rambank"
 };
 
 /* One rejected frame, recorded as it happens. Always on, in every build: a
@@ -190,6 +191,21 @@ static uint8_t peek_wram_bank(GBContext *ctx, unsigned bank, unsigned a) {
     if (!ctx->wram || a < 0xD000u || a >= 0xE000u) return 0;
     if (bank == 0) bank = 1;                       /* SVBK 0 aliases bank 1 */
     return ctx->wram[(bank & 7u) * 0x1000u + (a - 0xD000u)];
+}
+
+/* Every read of the game's LEVEL state goes through this, never through the
+ * live SVBK. See SML2_LEVEL_WRAM_BANK in sml2_map.h: the DX attribute drain
+ * leaves SVBK on 2 across the host's snapshot point often enough to turn block
+ * rows 32..47 into noise, which is what made the wide view flicker on the DX
+ * body and only there. */
+static uint8_t peek_level(GBContext *ctx, unsigned a) {
+    if (a >= 0xD000u && a < 0xE000u)
+        return peek_wram_bank(ctx, SML2_LEVEL_WRAM_BANK, a);
+    return peek(ctx, a);
+}
+
+static void peek_level_block(GBContext *ctx, unsigned a, uint8_t *out, unsigned n) {
+    for (unsigned i = 0; i < n; i++) out[i] = peek_level(ctx, a + i);
 }
 
 static uint8_t rom_byte(GBContext *ctx, int bank, unsigned addr) {
@@ -458,6 +474,7 @@ static int validate_scene(GBContext *ctx) {
     s.mode = peek(ctx, SML2_MODE);
 #define REJECT(r) do { gate_reject(ctx, (r)); return 0; } while (0)
     if (s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH) REJECT(SML2_REJ_MODE);
+    if (ctx->ram_bank != SML2_LEVEL_RAM_BANK) REJECT(SML2_REJ_RAMBANK);
     if (peek(ctx, SML2_BONUS_ROOM) & 0xF0u) REJECT(SML2_REJ_BONUS);
     if (peek(ctx, SML2_TRANSITION)) REJECT(SML2_REJ_TRANSITION);
     if (s.lcdc != SML2_GAMEPLAY_LCDC) REJECT(SML2_REJ_LCDC);
@@ -697,7 +714,7 @@ static void snapshot(GBContext *ctx) {
     } else {
         memset(s.attr_tile, 0, sizeof s.attr_tile);
     }
-    peek_block(ctx, SML2_MAP_BASE, s.map, SML2_MAP_SIZE);
+    peek_level_block(ctx, SML2_MAP_BASE, s.map, SML2_MAP_SIZE);
     peek_block(ctx, SML2_BLOCKDEF_BASE, s.blockdef, SML2_BLOCKDEF_SIZE);
     peek_block(ctx, SML2_SCROLLBOX, s.box, SML2_SCROLLBOX_LEN);
 

@@ -29,6 +29,19 @@
 #define SML2_MAP_STRIDE    0x100u    /* block columns per block row           */
 #define SML2_MAP_COLS      256       /* 4096 world pixels                     */
 #define SML2_MAP_ROWS      48        /*  768 world pixels                     */
+/* The level is decompressed with SVBK 0/1, so its $D000-$DFFF half -- block
+ * rows 32..47 -- is WRAM bank 1. That has to be named explicitly rather than
+ * read through the live SVBK: on the DX body the attribute half of the VRAM
+ * queue drain parks SVBK on 2 (24:79FE sets it, 24:7A32 restores it) and can
+ * still be running when the host takes its per-frame snapshot, in which case
+ * the same addresses hand back the $D000 attribute table instead of the level.
+ * Measured before the fix: 1213 of 1214 tile-gate rejections and 226 of 226
+ * block-id rejections over a 16k-frame attract run had wram_bank == 2. */
+#define SML2_LEVEL_WRAM_BANK 1
+/* Cart SRAM bank the level's $A000-$BFFF state lives in. Observed 0 on every
+ * scored frame of that run; the compositor refuses the frame rather than
+ * decode through a different one. */
+#define SML2_LEVEL_RAM_BANK  0
 #define SML2_BLOCKDEF_BASE 0xA600u   /* 128 entries x 4 tiles                 */
 #define SML2_BLOCKDEF_SIZE 0x200u
 #define SML2_MAX_BLOCK_ID  0x7Fu     /* bit 7 is the level RLE flag           */

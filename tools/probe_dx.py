@@ -175,7 +175,7 @@ def main():
     assert r["hw"]["model"] == "cgb" and r["hw"]["cgb"] == 1, r["hw"]
     assert r["hw"]["rom_size"] == 1048576, r["hw"]         # 512 KiB -> 1 MiB in memory
     assert r["hw"]["mbc"] == "0x1B", r["hw"]               # MBC5+RAM+BAT, the DX header
-    assert r["mods"]["margins"] == 0, r["mods"]            # widescreen gated off on DX
+    assert r["mods"]["margins"] == 1, r["mods"]            # widescreen available on DX too
 
     # The user's ROM file must be untouched and nothing new written beside it.
     assert ROM.stat().st_size == 524288

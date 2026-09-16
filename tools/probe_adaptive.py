@@ -165,7 +165,10 @@ def main():
         assert entry["width"] == 512, entry
         assert entry["valid"] == 1, entry
         assert entry["mode"] == 4, entry
-        assert entry["score"][0] == entry["score"][1] == 378, entry
+        # 21 x 17 cells: the 18th BG tile row is behind the status-bar window
+        # on every gameplay frame and the two bodies disagree about what they
+        # leave in it, so it is not scored (sml2_adaptive.c validate_scene).
+        assert entry["score"][0] == entry["score"][1] == 357, entry
         # Level 1 starts hard against the left wall: the view cannot be centred,
         # so it sits flush on the level's left bound with no black padding.
         assert entry["view_left"] == entry["bounds"][0] == 0, entry

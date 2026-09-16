@@ -28,12 +28,16 @@ same address with the same bytes in V1.0 and in DX.
 
 ## Bodies
 
-The executable carries two recompiled bodies (see `DX.md`). This mod is
-available on the **faithful** body only. The geometry is proven on DX — with the
-gate lifted, the DX body scores the same 378/378 block-map match at 32:9 — but
-the margins are composed with the monochrome tile model and DX is a CGB-only
-cart, so the synthesised margins would not match the colour the hardware drew.
-The launcher says so on the Adaptive widescreen row when DX color is on.
+The executable carries two recompiled bodies (see `DX.md`) and this mod runs on
+**either**. On the faithful DMG body a margin cell has no attribute and is drawn
+through BGP, as the hardware does. On the CGB-only DX body every margin cell
+also gets a CGB BG attribute, derived from the same data the hack itself uses:
+a flat 256-entry tile-index -> attribute table the hack keeps in **WRAM bank 2
+at `$D000`**, loaded per tileset from ROM bank `$21` and consumed by its
+extended VRAM-queue drain at `24:79B5`. Palette, tile VRAM bank and both flips
+are exact and re-proved every frame against the hardware attribute map in VRAM
+bank 1; `DX.md` has the full derivation, the addresses, and the one attribute
+bit that is not a function of the level.
 
 ## Run
 
@@ -96,18 +100,33 @@ coins he has taken.
 
 ## Scene gate (fail closed)
 
-Two independent gates, both must pass or the frame falls back to a centred
+Three independent gates, all must pass or the frame falls back to a centred
 native 160x144 image:
 
 * the game's own mode enum says scrolling gameplay, it is not a bonus room, and
   no pipe/door transition is in flight, with LCDC/WY/WX in their gameplay state;
 * **the block map decode reproduces the BG tilemap the hardware is actually
-  showing** over the visible 21x18 tile grid, at 95% or better.
+  showing** over the visible tile grid, at 95% or better;
+* on a CGB body, **every cell whose tile matched also matches on attribute**
+  (bits 0-6: palette, tile VRAM bank, both flips) against the hardware attribute
+  map in VRAM bank 1. No tolerance -- one wrong cell and the frame falls back.
 
-The second gate is the important one: it proves, every frame, the exact claim
-the margins rest on. Anything that reuses level RAM with different VRAM — the
-pause menu, the world map, the level intro card, the file select — fails it.
-Measured on every gameplay frame of every probe run: **378/378 cells, always.**
+The scoring grid is 21 x 17 = **357** cells. The 18th BG tile row lies behind the
+status-bar window (`WY = 136`) on every gameplay frame and is never drawn; the
+two images leave different things in it, so it is not scored. Measured on every
+gameplay frame of every probe run: **357/357 on both bodies**, with the always-on
+counters `gate_tile_fail` and `gate_attr_fail` both **0 of 2776 scored frames**.
+
+The colour gate is scored only on cells whose tile matched, which keeps it from
+inheriting the tile gate's 95% tolerance. That tolerance exists because the ROM's
+*direct* block writers bypass the `$A600` block definitions -- block id `$7F` is
+stamped as four copies of tile `$7F`, block id 7 as `$F8`-`$FB` -- so a
+just-changed block reads back one tile on hardware and another out of the block
+map until the next scroll redraws it. Measured identically on both bodies over
+the probe route: 2025 frames at 357/357, 8 at 355, 67 at 353.
+
+Anything that reuses level RAM with different VRAM -- the pause menu, the world
+map, the level intro card, the file select -- fails the gates.
 
 Pause deliberately falls back to native even though its frame is otherwise
 identical to gameplay; that is a policy choice, not a limitation (one constant,
@@ -131,7 +150,8 @@ attaches.
 | Level block map | `$B000`–`$DFFF` | `MEM[$B000 + ((wy>>4)&0xFF)*0x100 + ((wx>>4)&0xFF)]`, 256x48 blocks = 4096x768 px, IDs 0..127, mutated live |
 | Block map loader | `00:0361` → `00:0386` | RLE (bit 7 = run flag) from the map bank named by level header byte `$0D`; expands to exactly `0x3000` bytes |
 | Block map readers | `00:1F32`, `00:096C`, `00:0A38` | `GetBlockAt` and the VRAM row/column loaders — the address arithmetic this mod clones |
-| Block definitions | `$A600`–`$A7FF` | 128 entries x 4 tile indices, order TL, TR, BL, BR, no attribute byte (DMG) |
+| Block definitions | `$A600`–`$A7FF` | 128 entries x 4 tile indices, order TL, TR, BL, BR, no attribute byte on either image |
+| BG attribute table (DX) | `$D000`–`$D0FF`, **WRAM bank 2** | `attr = table[tile]`; loaded per tileset from ROM `21:$4000 + [$A269]*$100` by `21:730E`/`21:732C`, consumed by the DX queue drain `00:0AFB` → `24:79B5`. See `DX.md` |
 | Block definition loader | `00:03F1` | from bank 8, pointer in level header bytes `$0B`/`$0C` |
 | Scroll boxes | `$A960`–`$A98F` | 16x3 boxes of 16x16 blocks, nibble `%BTLR`, set bit = edge closed |
 | Scroll box loader | `00:0424` | from the map bank, `+ (header[$12] & 0x0F) * 0x30` |
@@ -191,10 +211,21 @@ immediates (`ld e,$60` / `$70` / `$A0`) that cannot express the >255 pixel
 offsets a 32:9 view needs, and overriding the resulting RAM window expresses the
 intent exactly, in one place, for both the generated and interpreter paths.
 
-## Engine change
+## Engine changes
 
-One change to the shared engine (`gb-recompiled`), committed separately as
-*"Extend gb_custom_read_override to external RAM, banked WRAM and HRAM"*:
+Two changes to the shared engine (`gb-recompiled`), each committed separately.
+
+### `debug server: peek command with explicit ROM/ERAM/WRAM/VRAM banks`
+
+`read_ram` goes through `gb_read8`, so it can only see the banks the guest has
+mapped -- and a game module's own read override can intercept it. The DX colour
+work needs VRAM bank 1 (the BG attribute map) and WRAM bank 2 (the attribute
+table) while the guest is running with VBK 0 and SVBK 1. `peek` reads the
+backing arrays directly with explicit `rom_bank` / `ram_bank` / `wram_bank` /
+`vram_bank` (omit any to follow the live one), chunked like `dump_ram`.
+Read-only, game-agnostic, inert unless called.
+
+### `Extend gb_custom_read_override to external RAM, banked WRAM and HRAM`
 
 `gb_custom_read_override` was only wired into the banked-ROM and `$C000`–`$CFFF`
 read paths. Super Mario Land 2 keeps its camera in HRAM and its actor state in
@@ -215,6 +246,7 @@ Run from the game root with a **native Windows** Python 3 (the probes use
 python tools/probe_adaptive.py
 python tools/probe_fit.py
 python tools/probe_mods.py
+python tools/probe_dx_widescreen.py   # both bodies at 32:9, colour gate + captures
 ```
 
 Each probe copies the executable into its own directory under `logs/` with its
@@ -225,7 +257,10 @@ Results from the current build:
 
 | Check | Result |
 |---|---|
-| Block map decode vs. hardware BG tilemap | 378/378 cells on every gameplay frame, all widths |
+| Block map decode vs. hardware BG tilemap | 357/357 cells on every gameplay frame, all widths, both bodies |
+| DX attribute decode vs. hardware VRAM bank 1 | 357/357 cells; `gate_attr_fail` 0 of 2776 scored frames |
+| DX attribute model, re-derived independently | 1024/1024 cells of the whole 32x32 BG map, every sample |
+| DX margin sprite palettes | 7 of the 8 CGB OBJ palettes reached; 4–5 pieces per frame out of VRAM bank 1 |
 | Widths 256 / 336 / 512 / 768 / 1024 / 160 | view stays in bounds, never falls back to native |
 | Fit resizing 1280x720 / 1600x450 / 1800x400 / 800x800 / 1536x432 | 256 / 512 / 648 / 160 / 512 px, each matching the live client aspect |
 | Left wall clamp at level start | `view_left == bound_left == 0`, no black padding |
@@ -264,7 +299,10 @@ Headless throughput on this machine (4500 frames, same route):
   design. The credits in particular run a genuine per-scanline raster effect
   (bank `$1A`) that a flat wide render would break.
 * **Exercised live on the Mushroom Zone intro level only** (the first level
-  reachable from a new file). Boss rooms, pipe sub-rooms and the vertical levels
+  reachable from a new file), on both bodies; that level is tileset 0, so the
+  DX attribute path has one tileset of live coverage. Other tilesets are
+  covered by construction (the table is re-read each frame from its ROM
+  source) and by the per-frame gate, not by a play-test. Boss rooms, pipe sub-rooms and the vertical levels
   use the same block map, scroll box and actor machinery and are covered by the
   per-frame decode gate, but have not been play-tested wide.
 * Mario himself and the effects/particle table are drawn by emitters that never

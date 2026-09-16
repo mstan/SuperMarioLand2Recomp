@@ -71,11 +71,31 @@ static struct {
     int extra_left, extra_right;
     int bound_left, bound_right;
     int score_hit, score_total;
+    int attr_hit, attr_total, attr_prio_diff;
     int mode;
     unsigned captures, capture_frames, fallbacks, rescues, ghosts;
+    /* Always-on gate accounting, so "how often does each gate reject a frame"
+     * is a query rather than an experiment. gate_scene counts frames that
+     * reached the two scoring gates at all. */
+    unsigned gate_scene, gate_tile_fail, gate_attr_fail;
+    /* Which CGB OBJ palettes and which tile-data bank the margin sprites
+     * actually used on the last composed frame. Margin sprites come from
+     * captured metasprite pieces, whose attribute byte is the ROM's own, so
+     * this is the evidence that they are NOT all falling through palette 0. */
+    unsigned sprite_pal_mask, sprite_bank1;
+    /* Per-cell outcome of the last scored frame, kept always -- 'the gate
+     * failed' is useless without 'where'. 0 = both matched, 't' = tile
+     * mismatch, 'a' = attribute mismatch, 'b' = both. Queried by
+     * sml2_score_map; costs one byte and one store per cell. */
+    uint8_t cell_miss[21 * 18];
     int count, build_count;
     uint8_t lcdc, scx, scy, wx, wy, bgp, obp0, obp1;
-    uint8_t vram[VRAM_SIZE];
+    /* Both VRAM banks: bank 0 at [0], bank 1 (CGB BG attribute map + the
+     * second half of the tile data) at [VRAM_SIZE]. */
+    uint8_t vram[VRAM_SIZE * 2];
+    int cgb;                       /* body runs in true CGB mode             */
+    int attr_ok;                   /* the DX tile->attribute table is live   */
+    uint8_t attr_tile[SML2_DX_ATTR_SIZE];
     uint8_t bg_pal[64], obj_pal[64];
     uint8_t oam[OAM_SIZE];
     uint8_t map[SML2_MAP_SIZE];
@@ -115,6 +135,15 @@ static void peek_block(GBContext *ctx, unsigned a, uint8_t *out, unsigned n) {
     for (unsigned i = 0; i < n; i++) out[i] = peek(ctx, a + i);
 }
 
+/* $D000-$DFFF out of an EXPLICIT WRAM bank. The DX attribute table lives in
+ * bank 2 while the guest is running with SVBK 0/1, so peek() -- which follows
+ * ctx->wram_bank -- would read the level's block map at the same address. */
+static uint8_t peek_wram_bank(GBContext *ctx, unsigned bank, unsigned a) {
+    if (!ctx->wram || a < 0xD000u || a >= 0xE000u) return 0;
+    if (bank == 0) bank = 1;                       /* SVBK 0 aliases bank 1 */
+    return ctx->wram[(bank & 7u) * 0x1000u + (a - 0xD000u)];
+}
+
 static uint8_t rom_byte(GBContext *ctx, int bank, unsigned addr) {
     unsigned o = (unsigned)bank * 0x4000u + (addr - 0x4000u);
     if (addr < 0x4000u || addr >= 0x8000u) return 0;
@@ -140,28 +169,29 @@ static uint8_t rom_byte(GBContext *ctx, int bank, unsigned addr) {
  *    the metasprite fetches follow the live bank. draw_banks[] below is only a
  *    sanity gate on which banks may host that routine at all.
  *
- * 2. Margin composition on DX -- gated off, and NOT because the geometry fails.
- *    Measured: with the draw-bank binding above fixed and the gate temporarily
- *    lifted, the DX body reaches gameplay (mode 4) at 32:9 and the block-map
- *    decode reproduces the game's own BG tilemap 378/378 cells, exactly as on
- *    the faithful body. Every geometric binding -- block map, block defs,
- *    scroll boxes, camera, activation/cull windows, the actor tap -- is correct
- *    on DX.
+ * 2. Margin COLOUR on DX. The geometry was never the problem -- the block-map
+ *    decode reproduces the game's own BG tilemap on the DX body exactly as on
+ *    the faithful one -- the tile-score histogram over the probe route is
+ *    identical on the two bodies. What was missing was the CGB attribute
+ *    byte: margins are synthesised from the LEVEL'S BLOCK MAP, not from the
+ *    hardware BG map, so a margin cell has no attribute to read out of VRAM.
  *
- *    What is missing is COLOUR. The DX cart header says 0xC0 at 0x143: it is a
- *    CGB-only cart whose background cells carry an attribute byte (palette
- *    number, VRAM bank, flips, priority). This compositor snapshots VRAM bank 0
- *    only (memcpy of VRAM_SIZE = 0x2000) and draws every margin BG cell through
- *    BG palette 0 -- right on a DMG cart, wrong on a CGB one. The native 160
- *    columns would be in full colour and the synthesised margins beside them
- *    would not, which is worse than not widening at all.
+ *    It is not stored per block. The hack keeps a flat 256-entry
+ *    tile-index -> attribute table in WRAM bank 2 at $D000, reloaded per
+ *    tileset from ROM bank $21 ($4000 + [$A269]*$100) by 21:730E / 21:732C,
+ *    and its extended VRAM-queue drain at 24:79B5 -- reached from the 15 bytes
+ *    it patched into ROM0 $0AFB -- writes attribute = table[tile] into VRAM
+ *    bank 1 for every tilemap cell it writes to bank 0. So the host derives a
+ *    margin cell's attribute from exactly the same two inputs the hack uses:
+ *    the tile index out of the block definitions, and that live table. See
+ *    sml2_map.h for the disassembly and DX.md for the write-up.
  *
- *    Closing it is not a mechanical port: margins are synthesised from the
- *    LEVEL'S BLOCK MAP, not from the hardware BG map, so a margin cell has no
- *    attribute byte to read. Someone has to find where the hack stores per-block
- *    colour (it is not in the four-byte block defs at $A600, which are tile
- *    indices only) before bg_row() and the HUD path can honour it. Until then
- *    the Mods page says so rather than letting the player discover it. See DX.md.
+ *    That claim is re-proved every frame: validate_scene() compares the
+ *    derived attribute against the hardware attribute map in VRAM bank 1 over
+ *    the scored 21x17 grid and requires every cell to match, or the frame
+ *    falls back to a centred native image. A body that is not in CGB mode
+ *    scores 0/0 and the check is vacuous, which is what the faithful body
+ *    wants.
  */
 typedef struct {
     const char *body_id;        /* GBBody::id; NULL terminates the table       */
@@ -178,9 +208,7 @@ static const Sml2Bindings k_bindings[] = {
     { SML2_BODY_FAITHFUL, k_draw_banks_faithful,
       (int)(sizeof k_draw_banks_faithful), 1, NULL },
     { SML2_BODY_DX, k_draw_banks_dx,
-      (int)(sizeof k_draw_banks_dx), 0,
-      "Unavailable while DX color is on: the wide margins are composed with the "
-      "monochrome tile model, so they would not match the DX palettes." },
+      (int)(sizeof k_draw_banks_dx), 1, NULL },
     { NULL, NULL, 0, 1, NULL },
 };
 
@@ -257,11 +285,49 @@ static uint8_t tile_at(int wx, int wy) {
     return off < SML2_BLOCKDEF_SIZE ? s.blockdef[off] : 0xFF;
 }
 
-/* VRAM address of tile row `row` of `tile`, honouring LCDC bit 4. */
-static unsigned tile_row_addr(uint8_t tile, int row) {
+/* The DX BG attribute for a raw tile index: a straight lookup in the live copy
+ * of the hack's per-tileset table (see sml2_map.h). Zero on the faithful body,
+ * which is exactly the DMG attribute.
+ *
+ * Bits 0-6 -- palette, tile VRAM bank, both flips -- are exactly what the hack
+ * writes, for every cell, proved every frame by the gate in validate_scene().
+ *
+ * Bit 7 (BG-over-OBJ priority) is NOT a function of the block map, and no
+ * amount of table reading will make it one. The hack patched each of the ROM's
+ * direct tilemap writers with an attribute counterpart, and one of them --
+ * 01:5B40, the "Mario used this block" writer that stamps tiles $F8-$FB and
+ * sets block id 7 -- jumps to 01:4100, which writes `[$D0F8] | $80`:
+ *
+ *     01:411A  FA F8 D0   ld a,[$D0F8]
+ *     01:411D  F6 80      or $80
+ *     01:411F  22 77 19 22 77   the 2x2 attribute quad
+ *
+ * The SAME block id, scrolled in from the authored level data through the
+ * ordinary queue drain, gets the table value with bit 7 clear. Measured on the
+ * DX body over the probe route: tiles $F8-$FB appear in VRAM bank 1 with
+ * attribute $87 (174 samples) AND with $07 (166 samples), same tile, same
+ * block id. The difference is which routine last wrote the cell -- history the
+ * host cannot read out of the level.
+ *
+ * Bit 7 changes no colour, only whether an OBJ pixel is hidden behind a
+ * non-zero BG pixel. So it is derived from the table (the value the queue
+ * drain -- the writer that redraws everything on the next scroll -- would
+ * produce), the gate is on the seven bits that decide colour, and bit-7-only
+ * divergences are counted and reported as attr_prio_diff rather than passed
+ * over in silence. */
+static uint8_t attr_for_tile(uint8_t tile) {
+    return s.attr_ok ? s.attr_tile[tile] : 0u;
+}
+
+/* VRAM offset of tile row `row` of `tile`, honouring LCDC bit 4 and the CGB
+ * attribute's tile-data bank (bit 3). The bank is added AFTER the 0x1FFE wrap
+ * so it cannot be masked away. */
+static unsigned tile_row_addr(uint8_t tile, int row, uint8_t attr) {
     unsigned base = (s.lcdc & LCDC_TILE_DATA) ? (unsigned)tile * 16u
                                               : 0x1000u + (unsigned)(int)(int8_t)tile * 16u;
-    return (base + (unsigned)row * 2u) & 0x1FFEu;
+    unsigned off = (base + (unsigned)row * 2u) & 0x1FFEu;
+    if (s.cgb && (attr & SML2_ATTR_BANK)) off += VRAM_SIZE;
+    return off;
 }
 
 /* ---- scene validation ----------------------------------------------------
@@ -275,6 +341,7 @@ static unsigned tile_row_addr(uint8_t tile, int row) {
  */
 static int validate_scene(GBContext *ctx) {
     s.score_hit = s.score_total = 0;
+    s.attr_hit = s.attr_total = 0;
     s.mode = peek(ctx, SML2_MODE);
     if (s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH) return 0;
     if (peek(ctx, SML2_BONUS_ROOM) & 0xF0u) return 0;
@@ -284,21 +351,70 @@ static int validate_scene(GBContext *ctx) {
     if (s.cam_x < SML2_CAM_CENTRE_X || s.cam_x >= SML2_MAP_COLS * 16) return 0;
     if (s.cam_y < SML2_CAM_CENTRE_Y || s.cam_y >= SML2_MAP_ROWS * 16) return 0;
 
-    int hit = 0, total = 0;
-    for (int ty = 0; ty < 18; ty++) {
+    /* Score only the BG rows the status-bar window does NOT cover. The bottom
+     * tile row (y 136..143 with WY = 136) is behind the window on every
+     * gameplay frame, and the two images disagree about it: V1.0 keeps writing
+     * the level into it, DX leaves it as $FF / attribute 0 because nothing can
+     * ever see it. Scoring it would reject ~1 DX frame in 5 over something
+     * that is not drawn -- the compositor overwrites those rows with the
+     * window layer in step 4 of render(). Both bodies score 21 x 17 = 357.  */
+    int rows = (s.wy + 7) / 8;
+    if (rows > 18) rows = 18;
+    memset(s.cell_miss, 0, sizeof s.cell_miss);
+    int hit = 0, total = 0, ahit = 0, atotal = 0, aprio = 0;
+    for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < 21; tx++) {
             int wx = s.left + tx * 8, wy = s.top + ty * 8;
             if (wx < 0 || wy < 0) return 0;
             if (block_at(wx, wy) > SML2_MAX_BLOCK_ID) return 0;
             unsigned sx = (unsigned)(s.scx + tx * 8) & 0xFFu;
             unsigned sy = (unsigned)(s.scy + ty * 8) & 0xFFu;
+            unsigned cell = 0x1800u + (sy >> 3) * 32u + (sx >> 3);
+            uint8_t tile = tile_at(wx, wy);
+            uint8_t miss = 0;
             total++;
-            if (s.vram[0x1800u + (sy >> 3) * 32u + (sx >> 3)] == tile_at(wx, wy)) hit++;
+            int tile_ok = s.vram[cell] == tile;
+            if (tile_ok) hit++; else miss |= 1u;
+            /* Second, independent proof, and the one that makes the DX body
+             * safe to widen: the attribute this module would paint the margin
+             * with must be the attribute the hardware is showing in bank 1. */
+            /* Score the attribute only where the TILE matched -- i.e. on the
+             * cells this module actually claims to have decoded. Scoring the
+             * rest would fold a pre-existing, body-independent gap in the tile
+             * model into the colour gate: the ROM's direct tilemap writers
+             * (block id $7F stamped as four copies of tile $7F by 24:7B80's
+             * V1.0 original, block id 7 as $F8-$FB by 01:5B40) bypass the
+             * $A600 block definitions, so a just-changed block reads back one
+             * tile on hardware and another out of the block map until the next
+             * scroll redraws it. Measured identically on BOTH bodies over the
+             * probe route: 2025 frames at 357/357, 8 at 355, 67 at 353. The
+             * 95% tile gate already covers that; the colour gate is 100% of
+             * what is left.
+             *
+             * Bit 7 (BG-over-OBJ priority) is the one attribute bit the block
+             * map cannot answer -- see the note above attr_for_tile. It
+             * changes no colour, so the gate is on the seven bits that do, and
+             * bit-7-only divergences are counted rather than passed over. */
+            if (s.cgb && tile_ok) {
+                uint8_t diff = (uint8_t)(s.vram[VRAM_SIZE + cell] ^ attr_for_tile(tile));
+                atotal++;
+                if (!(diff & 0x7Fu)) ahit++; else miss |= 2u;
+                if (diff & SML2_ATTR_PRIORITY) aprio++;
+            }
+            s.cell_miss[ty * 21 + tx] = miss;
         }
     }
     s.score_hit = hit;
     s.score_total = total;
-    return total > 0 && hit * 100 >= total * 95;
+    s.attr_hit = ahit;
+    s.attr_total = atotal;
+    s.attr_prio_diff = aprio;
+    s.gate_scene++;
+    if (total <= 0 || hit * 100 < total * 95) { s.gate_tile_fail++; return 0; }
+    /* Fail closed on colour: a single wrong attribute in the native window
+     * means the derivation is wrong somewhere, so no margin is trustworthy. */
+    if (s.cgb && (!s.attr_ok || ahit != atotal)) { s.gate_attr_fail++; return 0; }
+    return 1;
 }
 
 /* ---- horizontal extent ---------------------------------------------------
@@ -445,10 +561,26 @@ static void snapshot(GBContext *ctx) {
     s.lcdc = p->lcdc; s.scx = p->scx; s.scy = p->scy;
     s.wx = p->wx; s.wy = p->wy;
     s.bgp = p->bgp; s.obp0 = p->obp0; s.obp1 = p->obp1;
-    memcpy(s.vram, ctx->vram, VRAM_SIZE);
+    /* Both VRAM banks: on a CGB body bank 1 carries the BG attribute map the
+     * gate checks against, and the second half of the tile data. */
+    memcpy(s.vram, ctx->vram, sizeof s.vram);
     memcpy(s.oam, ctx->oam, OAM_SIZE);
     memcpy(s.bg_pal, p->bg_palette_ram, 64);
     memcpy(s.obj_pal, p->obj_palette_ram, 64);
+    s.cgb = cgb_mode(ctx);
+    /* Re-read the hack's tile -> attribute table every frame out of WRAM bank
+     * 2, so a mid-level tileset (and therefore palette) change follows for
+     * free. Host read with an explicit bank: the guest is running with SVBK
+     * 0/1 and the level's own block map sits at the same address there. */
+    s.attr_ok = 0;
+    if (s.cgb) {
+        for (unsigned i = 0; i < SML2_DX_ATTR_SIZE; i++)
+            s.attr_tile[i] = peek_wram_bank(ctx, SML2_DX_ATTR_BANK,
+                                            SML2_DX_ATTR_BASE + i);
+        s.attr_ok = 1;
+    } else {
+        memset(s.attr_tile, 0, sizeof s.attr_tile);
+    }
     peek_block(ctx, SML2_MAP_BASE, s.map, SML2_MAP_SIZE);
     peek_block(ctx, SML2_BLOCKDEF_BASE, s.blockdef, SML2_BLOCKDEF_SIZE);
     peek_block(ctx, SML2_SCROLLBOX, s.box, SML2_SCROLLBOX_LEN);
@@ -489,12 +621,12 @@ static void snapshot(GBContext *ctx) {
     if (getenv("SML2_ADAPTIVE_TRACE") && s.frame % 120 == 0) {
         fprintf(stderr,
                 "[ADAPTIVE] frame=%d valid=%d mode=%02X cam=%d,%d left=%d top=%d "
-                "view=%d+%d bounds=%d..%d score=%d/%d sprites=%d captures=%u "
-                "widened=%u dropped=%u fallbacks=%u\n",
+                "view=%d+%d bounds=%d..%d score=%d/%d attr=%d/%d sprites=%d "
+                "captures=%u widened=%u dropped=%u fallbacks=%u\n",
                 s.frame, s.valid, s.mode, s.cam_x, s.cam_y, s.left, s.top,
                 s.view_left, s.view_width, s.bound_left, s.bound_right,
-                s.score_hit, s.score_total, s.count, s.captures, s.rescues,
-                s.ghosts, s.fallbacks);
+                s.score_hit, s.score_total, s.attr_hit, s.attr_total, s.count,
+                s.captures, s.rescues, s.ghosts, s.fallbacks);
     }
 }
 
@@ -504,14 +636,19 @@ static void draw_sprite(uint32_t *out, int width, Sml2Sprite sp) {
     int h = (s.lcdc & LCDC_OBJ_SIZE) ? 16 : 8;
     uint8_t tile = sp.tile;
     if (!(s.lcdc & LCDC_OBJ_ENABLE)) return;
+    if (s.cgb) {
+        s.sprite_pal_mask |= 1u << (sp.attr & OAM_CGB_PALETTE);
+        if (sp.attr & OAM_CGB_BANK) s.sprite_bank1++;
+    }
     if (h == 16) tile &= 0xFEu;
     for (int y = 0; y < h; y++) {
         int sy = sp.y - s.top + y;
         if (sy < 0 || sy >= GB_SCREEN_HEIGHT) continue;
         int py = (sp.attr & OAM_FLIP_Y) ? h - 1 - y : y;
-        unsigned a = ((sp.attr & OAM_CGB_BANK) && cgb_mode(s.ctx) ? 0x2000u : 0u)
-                   + ((unsigned)tile * 16u + (unsigned)py * 2u);
-        a &= 0x1FFEu;
+        /* Mask to one bank FIRST, then select the bank: masking afterwards
+         * would clear bit 13 and send every bank-1 sprite back to bank 0. */
+        unsigned a = ((unsigned)tile * 16u + (unsigned)py * 2u) & 0x1FFEu;
+        if (s.cgb && (sp.attr & OAM_CGB_BANK)) a += VRAM_SIZE;
         uint8_t lo = s.vram[a], hi = s.vram[a + 1];
         for (int x = 0; x < 8; x++) {
             int world_x = sp.x + x;
@@ -522,9 +659,21 @@ static void draw_sprite(uint32_t *out, int width, Sml2Sprite sp) {
             int c = ((lo >> px) & 1) | (((hi >> px) & 1) << 1);
             if (!c) continue;
             int o = sy * width + sx;
-            if ((sp.attr & OAM_PRIORITY) && (s.lcdc & LCDC_BG_ENABLE) && s.opaque[o]) continue;
-            int pal_no = cgb_mode(s.ctx) ? (sp.attr & OAM_CGB_PALETTE)
-                                         : ((sp.attr & OAM_PALETTE) ? 1 : 0);
+            /* s.opaque holds the BG pixel this module drew: raw colour in bits
+             * 0-1, the cell's CGB priority bit in bit 7. Mirrors ppu.c
+             * render_sprites_segment: on CGB either the BG attribute's
+             * priority or the sprite's own hides the sprite behind a non-zero
+             * BG pixel, unless LCDC bit 0 is clear. */
+            if (s.cgb) {
+                if ((s.opaque[o] & 3u) && (s.lcdc & LCDC_BG_ENABLE) &&
+                    ((s.opaque[o] & SML2_ATTR_PRIORITY) || (sp.attr & OAM_PRIORITY)))
+                    continue;
+            } else if ((sp.attr & OAM_PRIORITY) && (s.lcdc & LCDC_BG_ENABLE) &&
+                       (s.opaque[o] & 3u)) {
+                continue;
+            }
+            int pal_no = s.cgb ? (sp.attr & OAM_CGB_PALETTE)
+                               : ((sp.attr & OAM_PALETTE) ? 1 : 0);
             uint8_t reg = (sp.attr & OAM_PALETTE) ? s.obp1 : s.obp0;
             out[o] = shade_color(s.ctx, s.obj_pal, pal_no, c, reg);
         }
@@ -540,9 +689,12 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
         s.view_left = view_left_for(s.left, width);
     }
 
-    /* 1. background, straight from the world block map */
-    uint32_t bg[4];
-    for (int i = 0; i < 4; i++) bg[i] = shade_color(ctx, s.bg_pal, 0, i, s.bgp);
+    /* 1. background, straight from the world block map. On a CGB body each
+     * cell also carries the DX attribute derived from its tile index, which
+     * validate_scene() has already proved against VRAM bank 1 this frame. */
+    uint32_t bg[8][4];
+    for (int p = 0; p < (s.cgb ? 8 : 1); p++)
+        for (int i = 0; i < 4; i++) bg[p][i] = shade_color(ctx, s.bg_pal, p, i, s.bgp);
     uint32_t black = rgb555(0);
     for (int y = 0; y < GB_SCREEN_HEIGHT; y++) {
         int wy = s.top + y;
@@ -551,7 +703,8 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
         uint32_t *line = out + (size_t)y * width;
         uint8_t *op = s.opaque + (size_t)y * width;
         int cached_tx = -0x7FFFFFFF;
-        uint8_t lo = 0, hi = 0;
+        uint8_t lo = 0, hi = 0, attr = 0;
+        const uint32_t *pal = bg[0];
         for (int x = 0; x < width; x++) {
             int wx = s.view_left + x;
             if (!row_ok || wx < s.bound_left || wx >= s.bound_right) {
@@ -562,16 +715,23 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
             int tx = wx >> 3;
             if (tx != cached_tx) {
                 cached_tx = tx;
-                unsigned a = tile_row_addr(tile_at(wx, wy), row);
+                uint8_t tile = tile_at(wx, wy);
+                attr = attr_for_tile(tile);
+                int trow = (attr & SML2_ATTR_FLIP_Y) ? 7 - row : row;
+                unsigned a = tile_row_addr(tile, trow, attr);
                 lo = s.vram[a];
                 hi = s.vram[a + 1];
+                pal = bg[attr & SML2_ATTR_PALETTE];
             }
-            int bit = 7 - (wx & 7);
+            int bit = (attr & SML2_ATTR_FLIP_X) ? (wx & 7) : 7 - (wx & 7);
             int c = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
-            line[x] = bg[c];
-            op[x] = (uint8_t)c;
+            line[x] = pal[c];
+            op[x] = (uint8_t)(c | (attr & SML2_ATTR_PRIORITY));
         }
     }
+
+    s.sprite_pal_mask = 0;
+    s.sprite_bank1 = 0;
 
     /* 2. actors in world space, then anything the hardware did draw. Both are
      * overwritten inside the native strip in step 3, so they only matter in the
@@ -597,28 +757,38 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
     if ((s.lcdc & LCDC_WINDOW_ENABLE) && s.wy < GB_SCREEN_HEIGHT && s.wx < 167) {
         unsigned map = (s.lcdc & LCDC_WINDOW_TILEMAP) ? 0x1C00u : 0x1800u;
         int origin = (int)s.wx - 7;
-        uint8_t fill = s.vram[map + SML2_HUD_FILL_COL];
         int right_start = width - (SML2_HUD_COLS - SML2_HUD_SPLIT) * 8;
         for (int y = s.wy; y < GB_SCREEN_HEIGHT; y++) {
             int wl = y - s.wy;
             unsigned row_base = map + (unsigned)(wl >> 3) * 32u;
+            /* The status bar is the real window layer, so unlike the margins
+             * its attributes need no derivation: they are the hardware's own,
+             * in VRAM bank 1 at the same offset. The padded gap repeats the
+             * bar's blank cell, attribute included. */
+            uint8_t fill = s.vram[row_base + SML2_HUD_FILL_COL];
+            uint8_t fill_attr = s.cgb ? s.vram[VRAM_SIZE + row_base + SML2_HUD_FILL_COL] : 0u;
             uint32_t *line = out + (size_t)y * width;
             for (int x = origin > 0 ? origin : 0; x < width; x++) {
-                int src = -1, bit;
-                uint8_t t;
+                int src = -1, col, bit;
+                uint8_t t, attr;
                 int wxp = x - origin;
                 if (wxp < SML2_HUD_SPLIT * 8) src = wxp;
                 else if (x >= right_start) src = SML2_HUD_COLS * 8 - (width - x);
                 if (src >= 0 && src < SML2_HUD_COLS * 8) {
-                    t = s.vram[row_base + (unsigned)(src >> 3)];
-                    bit = 7 - (src & 7);
+                    col = src >> 3;
+                    t = s.vram[row_base + (unsigned)col];
+                    attr = s.cgb ? s.vram[VRAM_SIZE + row_base + (unsigned)col] : 0u;
+                    bit = src & 7;
                 } else {
                     t = fill;
-                    bit = 7 - (x & 7);
+                    attr = fill_attr;
+                    bit = x & 7;
                 }
-                unsigned a = tile_row_addr(t, wl & 7);
+                if (!(attr & SML2_ATTR_FLIP_X)) bit = 7 - bit;
+                int trow = (attr & SML2_ATTR_FLIP_Y) ? 7 - (wl & 7) : (wl & 7);
+                unsigned a = tile_row_addr(t, trow, attr);
                 int c = ((s.vram[a] >> bit) & 1) | (((s.vram[a + 1] >> bit) & 1) << 1);
-                line[x] = bg[c];
+                line[x] = bg[attr & SML2_ATTR_PALETTE][c];
             }
         }
     }
@@ -738,14 +908,71 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt("{\"id\":%d,\"ok\":%s}", id, f ? "true" : "false");
         return 1;
     }
+    if (!strcmp(cmd, "sml2_score_map")) {
+        /* 18 rows of 21 characters: '.' both matched, 't' tile mismatch,
+         * 'a' attribute mismatch, 'b' both. From the snapshot the last scored
+         * frame actually used, so it needs no arming and no stepping. */
+        char rows[18 * 25 + 8];   /* 18 x ("," + quote + 21 + quote) + NUL */
+        int n = 0;
+        for (int ty = 0; ty < 18; ty++) {
+            if (ty) rows[n++] = ',';
+            rows[n++] = '"';
+            for (int tx = 0; tx < 21; tx++)
+                rows[n++] = ".tab"[s.cell_miss[ty * 21 + tx] & 3u];
+            rows[n++] = '"';
+        }
+        rows[n] = '\0';
+        /* ...plus the first few mismatching cells in full, so "where" comes
+         * with "what": the tile this module decoded, the tile the hardware is
+         * showing, the attribute derived from the table and the attribute in
+         * VRAM bank 1. */
+        char detail[2048];
+        int d = 0, shown = 0;
+        detail[d++] = '[';
+        for (int ty = 0; ty < 18 && shown < 12; ty++) {
+            for (int tx = 0; tx < 21 && shown < 12; tx++) {
+                if (!s.cell_miss[ty * 21 + tx]) continue;
+                int wx = s.left + tx * 8, wy = s.top + ty * 8;
+                unsigned sx = (unsigned)(s.scx + tx * 8) & 0xFFu;
+                unsigned sy = (unsigned)(s.scy + ty * 8) & 0xFFu;
+                unsigned cell = 0x1800u + (sy >> 3) * 32u + (sx >> 3);
+                uint8_t tile = tile_at(wx, wy);
+                d += snprintf(detail + d, sizeof detail - (size_t)d,
+                              "%s{\"tx\":%d,\"ty\":%d,\"wx\":%d,\"wy\":%d,"
+                              "\"cell\":%u,\"block\":%u,\"tile\":%u,\"hw_tile\":%u,"
+                              "\"attr\":%u,\"hw_attr\":%u}",
+                              shown ? "," : "", tx, ty, wx, wy,
+                              (unsigned)(cell - 0x1800u), block_at(wx, wy), tile,
+                              s.vram[cell], attr_for_tile(tile), s.vram[VRAM_SIZE + cell]);
+                shown++;
+            }
+        }
+        detail[d++] = ']';
+        detail[d] = '\0';
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"score\":[%d,%d],\"attr_score\":[%d,%d],"
+            "\"scx\":%d,\"scy\":%d,\"left\":%d,\"top\":%d,\"map\":[%s],"
+            "\"misses\":%s}",
+            id, s.score_hit, s.score_total, s.attr_hit, s.attr_total,
+            s.scx, s.scy, s.left, s.top, rows, detail);
+        return 1;
+    }
     if (strcmp(cmd, "sml2_view")) return 0;
     gb_debug_server_send_fmt(
         "{\"id\":%d,\"valid\":%d,\"mode\":%d,\"width\":%d,\"left\":%d,\"top\":%d,"
         "\"view_left\":%d,\"camera_x\":%d,\"camera_y\":%d,\"bounds\":[%d,%d],"
-        "\"score\":[%d,%d],\"sprites\":%d,\"captures\":%u,\"capture_frames\":%u,"
-        "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,\"frame\":%d}",
+        "\"score\":[%d,%d],\"attr_score\":[%d,%d],\"attr_prio_diff\":%d,"
+        "\"cgb\":%d,\"attr_table\":%d,"
+        "\"tileset\":%d,\"sprites\":%d,\"captures\":%u,\"capture_frames\":%u,"
+        "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,"
+        "\"gate_scene\":%u,\"gate_tile_fail\":%u,\"gate_attr_fail\":%u,"
+        "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
-        s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total, s.count,
-        s.captures, s.capture_frames, s.rescues, s.ghosts, s.fallbacks, s.frame);
+        s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
+        s.attr_hit, s.attr_total, s.attr_prio_diff, s.cgb, s.attr_ok,
+        s.ctx ? peek(s.ctx, SML2_DX_TILESET) : 0, s.count,
+        s.captures, s.capture_frames, s.rescues, s.ghosts, s.fallbacks,
+        s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
+        s.sprite_pal_mask, s.sprite_bank1, s.frame);
     return 1;
 }

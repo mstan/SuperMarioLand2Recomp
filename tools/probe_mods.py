@@ -135,7 +135,7 @@ def main():
         results["dx_on"] = state
         assert state["dx"] == 1 and state["dx_available"] == 1, state
         assert state["body"] == "Super_Mario_Land_2_DX", state
-        assert state["margins"] == 0, state   # widescreen is not composable on DX
+        assert state["margins"] == 1, state   # widescreen composes on DX too now
         saved = configparser.ConfigParser()
         saved.read(FOLDER / "sml2-mods.ini")
         assert saved["Mods"].getint("DX") == 1, dict(saved["Mods"])

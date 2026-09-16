@@ -303,9 +303,21 @@ edge the ROM just used, and classifies every record the cursor stepped over as
 spawned (its X equalled the edge) or consumed. `sml2_spawn_state` returns the
 whole spawn list tagged with what has happened to each record, the running
 totals, and a 64-entry ring of the most recent consumed-without-spawning events
-with the camera and edge at the time. `sml2_view` carries the totals plus the
-live ramp state (`spawn_edge`, `spawn_reach`, `spawn_lag`, `spawn_reads`,
-`spawn_unpaired`, `spawn_resets`).
+with the camera, the edge and the edge's PREVIOUS position at the time.
+`sml2_view` carries the totals plus the live ramp state (`spawn_edge`,
+`spawn_reach`, `spawn_lag`, `spawn_reads`, `spawn_unpaired`, `spawn_resets`,
+`spawn_ungated`).
+
+Consumed entries are split into two kinds, because only one of them is a loss:
+
+| Kind | What happened | Is it a bug |
+|---|---|---|
+| `spawn_seek` | the cursor was far behind the camera and walked forward to it — every level load does this, in vanilla too | no; the level was never going to spawn them |
+| `spawn_stepped_over` | the entry lay between where this direction's edge was last time and where it is now: the edge **crossed** it | **yes** — this is the number the 8 px ramp exists to hold at zero |
+
+The raw `spawn_jumped` total is the sum and says nothing on its own: over a full
+attract cycle it is dominated by seeks (measured 99 with the mod's spawn policy
+Original, i.e. vanilla scanner behaviour).
 
 With the mod **off** nothing is installed at all — that build stays the faithful
 one — so `tools/probe_spawns.py` derives the identical ledger from the identical
@@ -468,7 +480,9 @@ Results from the current build:
 | Edge never moves more than 8 px between scanning frames | 0 / 0 / 0 violations |
 | Attract-mode demo, no input at all | Original first contact 112 px, Extended 287 px; 0 / 0 entries stepped over, 0 / 0 consumed without spawning |
 | Module ledger vs RAM-derived ledger | agree on every spawned record in both policies; `spawn_unpaired` 0, edge high/low reads paired 806 / 806 |
-| Spawns during a debounce window | PLACEHOLDER |
+| Spawns during a debounce window | the window is genuinely entered — 25 debounced frames per 16 001-frame attract cycle on both bodies. `spawn_ungated` is 0 because none of those frames was also one the builder took a scan branch on, so the widened edge was never offered to an unproven frame in the first place; the decline path is there for the case that does coincide. `spawn_unpaired` 0, `pillarbox_model` 0 |
+| Entries the scan edge CROSSED, 16 001-frame attract cycle | 0 / 0 faithful, 0 / 0 DX (Original / Extended), of 99 / 140 and 99 / 140 consumed — the rest are cursor seeks at the demo's level loads, which vanilla does too |
+| Extended ramp over that cycle | reach 277 px right and 176 px left on the faithful body, 277 / 176 px on DX; edge high/low reads paired 5650/5650 right and 113/113 left |
 
 Headless throughput on this machine (4500 frames, same route):
 

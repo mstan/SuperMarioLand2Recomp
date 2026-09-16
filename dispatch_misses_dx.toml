@@ -363,6 +363,11 @@ hits = 142
 
 [[miss]]
 bank = 4
+addr = 0x4059
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x4068
 hits = 4
 
@@ -403,6 +408,21 @@ hits = 1
 
 [[miss]]
 bank = 4
+addr = 0x40F9
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x4108
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4114
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x4116
 hits = 122
 
@@ -433,6 +453,11 @@ hits = 1
 
 [[miss]]
 bank = 4
+addr = 0x422C
+hits = 2
+
+[[miss]]
+bank = 4
 addr = 0x43E9
 hits = 1
 
@@ -440,6 +465,11 @@ hits = 1
 bank = 4
 addr = 0x4690
 hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x469A
+hits = 2
 
 [[miss]]
 bank = 4
@@ -499,6 +529,11 @@ hits = 1
 [[miss]]
 bank = 4
 addr = 0x4EAF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4F4D
 hits = 1
 
 [[miss]]
@@ -643,12 +678,22 @@ hits = 1
 
 [[miss]]
 bank = 4
+addr = 0x5407
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x5408
 hits = 1
 
 [[miss]]
 bank = 4
 addr = 0x5417
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x541A
 hits = 1
 
 [[miss]]
@@ -713,6 +758,11 @@ hits = 1
 
 [[miss]]
 bank = 4
+addr = 0x5474
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x548D
 hits = 1
 
@@ -734,6 +784,11 @@ hits = 1
 [[miss]]
 bank = 4
 addr = 0x54C7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54EE
 hits = 1
 
 [[miss]]
@@ -1030,6 +1085,11 @@ hits = 1
 bank = 4
 addr = 0x561D
 hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5623
+hits = 3
 
 [[miss]]
 bank = 4
@@ -1533,6 +1593,11 @@ hits = 8
 
 [[miss]]
 bank = 4
+addr = 0x573D
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x573E
 hits = 5
 
@@ -1644,6 +1709,11 @@ hits = 1
 [[miss]]
 bank = 4
 addr = 0x577A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x577B
 hits = 1
 
 [[miss]]
@@ -2208,6 +2278,11 @@ hits = 123
 
 [[miss]]
 bank = 4
+addr = 0x58D5
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x58D8
 hits = 1
 
@@ -2230,6 +2305,16 @@ hits = 1
 bank = 4
 addr = 0x58E5
 hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x58E6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58EC
+hits = 3
 
 [[miss]]
 bank = 4
@@ -2259,6 +2344,11 @@ hits = 1
 [[miss]]
 bank = 4
 addr = 0x58F3
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58F5
 hits = 1
 
 [[miss]]
@@ -2345,6 +2435,11 @@ hits = 57
 bank = 4
 addr = 0x59BF
 hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x59C2
+hits = 2
 
 [[miss]]
 bank = 4
@@ -2458,6 +2553,11 @@ hits = 3
 
 [[miss]]
 bank = 4
+addr = 0x5A92
+hits = 3
+
+[[miss]]
+bank = 4
 addr = 0x5A94
 hits = 10
 
@@ -2558,6 +2658,11 @@ hits = 1
 
 [[miss]]
 bank = 4
+addr = 0x7F7E
+hits = 1
+
+[[miss]]
+bank = 4
 addr = 0x7F81
 hits = 1
 
@@ -2624,6 +2729,11 @@ hits = 1
 [[miss]]
 bank = 4
 addr = 0x7FD8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FDE
 hits = 1
 
 [[miss]]
@@ -2998,6 +3108,11 @@ hits = 1
 
 [[miss]]
 bank = 15
+addr = 0x6931
+hits = 1
+
+[[miss]]
+bank = 15
 addr = 0x6934
 hits = 14
 
@@ -3183,6 +3298,11 @@ hits = 1
 
 [[miss]]
 bank = 15
+addr = 0x699E
+hits = 1
+
+[[miss]]
+bank = 15
 addr = 0x69A0
 hits = 14
 
@@ -3364,6 +3484,11 @@ hits = 2
 [[miss]]
 bank = 15
 addr = 0x6ADB
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6ADC
 hits = 1
 
 [[miss]]
@@ -3585,6 +3710,11 @@ hits = 1
 bank = 36
 addr = 0x782D
 hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x7835
+hits = 1
 
 [[miss]]
 bank = 36

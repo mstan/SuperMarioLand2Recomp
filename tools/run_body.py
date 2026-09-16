@@ -1,11 +1,11 @@
 """Run a recompiled SML2 body headless along the Level 1 probe route and report interpreter
 fallback sites/events, gameplay progress (mode $FF9B, camera X) and PPM captures under logs/body-<tag>/.
-Usage: python tools/run_body.py <exe> <tag> [frames]"""
+Usage: python tools/run_body.py <exe> <tag> [frames] [rom]"""
 
 import json, socket, subprocess, time, os, sys, shutil
 from pathlib import Path
 exe=Path(sys.argv[1]).resolve(); tag=sys.argv[2]; frames=int(sys.argv[3]) if len(sys.argv)>3 else 4600
-rom="F:/Projects/gbcrecomp/Super Mario Land 2/roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
+rom=sys.argv[4] if len(sys.argv)>4 else "F:/Projects/gbcrecomp/Super Mario Land 2/roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
 folder=Path("F:/Projects/gbcrecomp/Super Mario Land 2/logs")/("body-"+tag); shutil.rmtree(folder,ignore_errors=True); (folder/"logs").mkdir(parents=True)
 shutil.copy2(exe, folder/exe.name); (folder/"rom.cfg").write_text(rom)
 assets=exe.parent/"assets"

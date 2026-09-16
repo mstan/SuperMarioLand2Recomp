@@ -91,6 +91,19 @@ static const char *const k_reject_name[SML2_REJ_COUNT] = {
  * flicker is a handful of frames scattered through a ten-thousand-frame run,
  * and arming a trace after seeing it is exactly how you miss it. The probe
  * free-runs and then reads the ring backwards. */
+/* Every wide <-> native transition, with what caused it. "Did it flicker" is
+ * then a query on a ring that has been filling since boot, not a per-frame poll
+ * over a TCP socket -- a probe can free-run ten thousand frames and read the
+ * answer afterwards, and the count is exact rather than sampled. */
+#define SML2_FLIP_LOG_CAP 64
+typedef struct {
+    unsigned frame;
+    uint8_t to_wide, reason, mode, cgb;
+    int16_t score_hit, score_total, attr_hit, attr_total;
+    int16_t cam_x, cam_y;
+    uint8_t tileset, fail_run;
+} Sml2FlipEvent;
+
 #define SML2_GATE_LOG_CAP 256
 #define SML2_GATE_LOG_CELLS 4
 typedef struct {
@@ -162,6 +175,18 @@ static struct {
     int fail_run;          /* consecutive rejected frames                   */
     unsigned debounced;    /* frames shown wide on last-good margins        */
     unsigned narrowed;     /* frames actually pillarboxed                   */
+    /* Of those, the ones pillarboxed because the MODEL failed rather than
+     * because the scene genuinely stopped being scrolling gameplay. A mode /
+     * bonus / transition rejection is the gate doing its job; a tile / attr /
+     * blockid rejection is this module being wrong. */
+    unsigned narrowed_model;
+    /* ...and the subset of those the viewer could actually SEE happen: the
+     * previous frame was wide, so the view visibly snapped to pillarbox. This
+     * is the flicker number, and it is the one that must be zero. A model
+     * failure on a frame that was already narrow -- the first frame of a demo
+     * segment, where the game has loaded the level but not yet filled VRAM --
+     * changes nothing on screen. */
+    unsigned pillarbox_model;
     /* Cells whose attribute BYTE differed from the hardware's but whose
      * painted pixels did not. Reported, never a rejection: the difference is
      * real and worth seeing, it just is not visible. */
@@ -171,6 +196,8 @@ static struct {
     int reject;                    /* this frame's reason, 0 when accepted   */
     Sml2GateEvent gate_log[SML2_GATE_LOG_CAP];
     unsigned gate_log_seq;         /* total events ever recorded             */
+    Sml2FlipEvent flip_log[SML2_FLIP_LOG_CAP];
+    unsigned flip_log_seq;
     /* Which CGB OBJ palettes and which tile-data bank the margin sprites
      * actually used on the last composed frame. Margin sprites come from
      * captured metasprite pieces, whose attribute byte is the ROM's own, so
@@ -865,13 +892,38 @@ static void snapshot(GBContext *ctx) {
          * rejections is long enough to be a real scene change. */
         if (s.fail_run >= SML2_FALLBACK_DEBOUNCE || !s_good_valid) s.wide = 0;
     }
-    if (s.wide != was_wide && gb_custom_width > GB_SCREEN_WIDTH) s.flips++;
+    if (s.wide != was_wide && gb_custom_width > GB_SCREEN_WIDTH) {
+        Sml2FlipEvent *f = &s.flip_log[s.flip_log_seq % SML2_FLIP_LOG_CAP];
+        f->frame = (unsigned)s.frame;
+        f->to_wide = (uint8_t)s.wide;
+        f->reason = (uint8_t)s.reject;
+        f->mode = (uint8_t)s.mode;
+        f->cgb = (uint8_t)s.cgb;
+        f->score_hit = (int16_t)s.score_hit;
+        f->score_total = (int16_t)s.score_total;
+        f->attr_hit = (int16_t)s.attr_hit;
+        f->attr_total = (int16_t)s.attr_total;
+        f->cam_x = (int16_t)s.cam_x;
+        f->cam_y = (int16_t)s.cam_y;
+        f->tileset = peek(ctx, SML2_DX_TILESET);
+        f->fail_run = (uint8_t)(s.fail_run > 255 ? 255 : s.fail_run);
+        s.flip_log_seq++;
+        s.flips++;
+    }
     if (!s.wide) {
         s.bound_left = s.bound_right = 0;
         s.extra_left = s.extra_right = 0;
         s.count = 0;
         s.fallbacks++;
         s.narrowed++;
+        switch (s.reject) {
+            case SML2_REJ_TILE: case SML2_REJ_ATTR: case SML2_REJ_BLOCKID:
+            case SML2_REJ_NEGCOORD: case SML2_REJ_RAMBANK: case SML2_REJ_NOTABLE:
+                s.narrowed_model++;
+                if (was_wide) s.pillarbox_model++;
+                break;
+            default: break;
+        }
         if (!s.valid) s_good_valid = 0;   /* nothing good to hold on to now */
         return;
     }
@@ -1188,6 +1240,30 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt("{\"id\":%d,\"ok\":%s}", id, f ? "true" : "false");
         return 1;
     }
+    if (!strcmp(cmd, "sml2_flip_log")) {
+        unsigned seq = s.flip_log_seq;
+        unsigned first = seq > SML2_FLIP_LOG_CAP ? seq - SML2_FLIP_LOG_CAP : 0;
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"seq\":%u,\"first\":%u,\"flips\":%u,"
+            "\"debounced\":%u,\"narrowed\":%u,\"debounce\":%d}",
+            id, seq, first, s.flips, s.debounced, s.narrowed,
+            SML2_FALLBACK_DEBOUNCE);
+        for (unsigned k = first; k < seq; k++) {
+            const Sml2FlipEvent *f = &s.flip_log[k % SML2_FLIP_LOG_CAP];
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"seq\":%u,\"frame\":%u,\"to_wide\":%u,"
+                "\"reason\":\"%s\",\"mode\":%u,\"cgb\":%u,\"tileset\":%u,"
+                "\"fail_run\":%u,\"cam\":[%d,%d],\"score\":[%d,%d],"
+                "\"attr_score\":[%d,%d]}",
+                id, k, f->frame, f->to_wide,
+                f->reason < SML2_REJ_COUNT ? k_reject_name[f->reason] : "?",
+                f->mode, f->cgb, f->tileset, f->fail_run, f->cam_x, f->cam_y,
+                f->score_hit, f->score_total, f->attr_hit, f->attr_total);
+        }
+        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"end\":true,\"seq\":%u}",
+                                 id, seq);
+        return 1;
+    }
     if (!strcmp(cmd, "sml2_gate_log")) {
         /* Query the always-on rejection ring: {"since":N} returns every event
          * recorded from sequence N onward (clamped to what the ring still
@@ -1211,13 +1287,15 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt(
             "{\"id\":%d,\"ok\":true,\"seq\":%u,\"first\":%u,\"dropped\":%u,"
             "\"frames\":%u,\"scored\":%u,\"flips\":%u,\"fallbacks\":%u,"
-            "\"debounced\":%u,\"narrowed\":%u,\"attr_byte_diff\":%u,"
+            "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
+            "\"pillarbox_model\":%u,\"attr_byte_diff\":%u,"
             "\"reasons\":{%s}}",
             id, seq, first,
             seq > SML2_GATE_LOG_CAP && (unsigned)since < seq - SML2_GATE_LOG_CAP
                 ? (seq - SML2_GATE_LOG_CAP) - (unsigned)since : 0u,
             s.gate_frames, s.gate_scene, s.flips, s.fallbacks,
-            s.debounced, s.narrowed, s.attr_byte_diff, reasons);
+            s.debounced, s.narrowed, s.narrowed_model, s.pillarbox_model,
+            s.attr_byte_diff, reasons);
         for (unsigned k = first; k < seq; k++) {
             const Sml2GateEvent *e = &s.gate_log[k % SML2_GATE_LOG_CAP];
             char cells[512];
@@ -1311,7 +1389,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"gate_scene\":%u,\"gate_tile_fail\":%u,\"gate_attr_fail\":%u,"
         "\"reject\":\"%s\",\"flips\":%u,\"gate_frames\":%u,\"gate_log_seq\":%u,"
         "\"attr_byte_diff\":%u,\"wide\":%d,\"fail_run\":%d,"
-        "\"debounced\":%u,\"narrowed\":%u,\"debounce\":%d,"
+        "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
+        "\"pillarbox_model\":%u,\"debounce\":%d,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
@@ -1321,7 +1400,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
         s.reject >= 0 && s.reject < SML2_REJ_COUNT ? k_reject_name[s.reject] : "?",
         s.flips, s.gate_frames, s.gate_log_seq, s.attr_byte_diff,
-        s.wide, s.fail_run, s.debounced, s.narrowed, SML2_FALLBACK_DEBOUNCE,
+        s.wide, s.fail_run, s.debounced, s.narrowed, s.narrowed_model,
+        s.pillarbox_model, SML2_FALLBACK_DEBOUNCE,
         s.sprite_pal_mask, s.sprite_bank1, s.frame);
     return 1;
 }

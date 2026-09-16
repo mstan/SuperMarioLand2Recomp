@@ -105,6 +105,42 @@ typedef struct {
     } cell[SML2_GATE_LOG_CELLS];
 } Sml2GateEvent;
 
+/* A single rejected frame must never be seen. The gate is a proof obligation,
+ * not a presentation decision: it can go false for one frame because the guest
+ * was midway through a VBlank update, or because a demo segment is changing
+ * scene, and dropping to a pillarboxed 160 for that one frame is far worse to
+ * look at than showing the previous frame's margins. So the gate result is
+ * debounced -- N consecutive rejections before the view narrows, instant
+ * return to wide on the first acceptance -- and during the debounce window the
+ * margins are composed from the last frame that PASSED, while the native 160
+ * columns keep coming from the live PPU as always.
+ *
+ * 6 frames is ~100 ms at 60 Hz: long enough to swallow every transient measured
+ * over a 16k-frame attract run, short enough that a genuine scene change (the
+ * world map, a pipe room, a demo segment boundary) narrows the view before the
+ * player registers the wrong content. */
+#define SML2_FALLBACK_DEBOUNCE 6
+
+/* Exactly the state render() and draw_sprite() read. Copied on every accepted
+ * frame, copied back while debouncing. */
+typedef struct {
+    int cgb, attr_ok, mode;
+    int cam_x, cam_y, left, top, view_left, view_width;
+    int extra_left, extra_right, bound_left, bound_right, count;
+    uint8_t lcdc, scx, scy, wx, wy, bgp, obp0, obp1;
+    uint8_t vram[VRAM_SIZE * 2];
+    uint8_t bg_pal[64], obj_pal[64];
+    uint8_t oam[OAM_SIZE];
+    uint8_t map[SML2_MAP_SIZE];
+    uint8_t blockdef[SML2_BLOCKDEF_SIZE];
+    uint8_t box[SML2_SCROLLBOX_LEN];
+    uint8_t attr_tile[SML2_DX_ATTR_SIZE];
+    Sml2Sprite sprite[SML2_MAX_SPRITES];
+} Sml2Frame;
+
+static Sml2Frame s_good;
+static int s_good_valid;
+
 static struct {
     GBContext *ctx;
     int frame, valid;
@@ -122,6 +158,10 @@ static struct {
      * reached the two scoring gates at all. */
     unsigned gate_scene, gate_tile_fail, gate_attr_fail;
     unsigned gate_reason[SML2_REJ_COUNT];
+    int wide;              /* presentation decision after debouncing        */
+    int fail_run;          /* consecutive rejected frames                   */
+    unsigned debounced;    /* frames shown wide on last-good margins        */
+    unsigned narrowed;     /* frames actually pillarboxed                   */
     /* Cells whose attribute BYTE differed from the hardware's but whose
      * painted pixels did not. Reported, never a rejection: the difference is
      * real and worth seeing, it just is not visible. */
@@ -678,7 +718,7 @@ static void capture_actor(GBContext *ctx) {
 static void read_tap(GBContext *ctx, uint16_t address) {
     if (address != SML2_TAP_ADDR || !is_draw_bank(ctx->rom_bank)) return;
     if (ctx->pc != SML2_TAP_PC && ctx->pc != SML2_TAP_PC - 2) return;
-    if (!s.valid || gb_custom_width <= GB_SCREEN_WIDTH) return;
+    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return;
     capture_actor(ctx);
 }
 
@@ -697,7 +737,7 @@ static void read_tap(GBContext *ctx, uint16_t address) {
  *    and the host draws it in the margin instead.
  */
 static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
-    if (!s.valid || gb_custom_width <= GB_SCREEN_WIDTH) return value;
+    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return value;
     unsigned pc = ctx->pc;
 
     if (address >= SML2_ACT_UPPER_HI && address <= SML2_CULL_LOWER_LO &&
@@ -729,6 +769,39 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
         return (uint8_t)((peek(ctx, 0xFFD1u) + 8 - 0xB8) & 0xFF);
     }
     return value;
+}
+
+#define SML2_FRAME_FIELDS(OP) \
+    OP(cgb); OP(attr_ok); OP(mode); OP(cam_x); OP(cam_y); OP(left); OP(top); \
+    OP(view_left); OP(view_width); OP(extra_left); OP(extra_right); \
+    OP(bound_left); OP(bound_right); OP(count); OP(lcdc); OP(scx); OP(scy); \
+    OP(wx); OP(wy); OP(bgp); OP(obp0); OP(obp1)
+
+#define SML2_FRAME_ARRAYS(OP) \
+    OP(vram); OP(bg_pal); OP(obj_pal); OP(oam); OP(map); OP(blockdef); \
+    OP(box); OP(attr_tile)
+
+static void frame_save(void) {
+#define SAVE_SCALAR(f) s_good.f = s.f
+#define SAVE_ARRAY(f)  memcpy(s_good.f, s.f, sizeof s_good.f)
+    SML2_FRAME_FIELDS(SAVE_SCALAR);
+    SML2_FRAME_ARRAYS(SAVE_ARRAY);
+#undef SAVE_SCALAR
+#undef SAVE_ARRAY
+    if (s.count > 0)
+        memcpy(s_good.sprite, s.sprite, (size_t)s.count * sizeof(Sml2Sprite));
+    s_good_valid = 1;
+}
+
+static void frame_restore(void) {
+#define LOAD_SCALAR(f) s.f = s_good.f
+#define LOAD_ARRAY(f)  memcpy(s.f, s_good.f, sizeof s_good.f)
+    SML2_FRAME_FIELDS(LOAD_SCALAR);
+    SML2_FRAME_ARRAYS(LOAD_ARRAY);
+#undef LOAD_SCALAR
+#undef LOAD_ARRAY
+    if (s.count > 0)
+        memcpy(s.sprite, s_good.sprite, (size_t)s.count * sizeof(Sml2Sprite));
 }
 
 /* ---- per-frame snapshot (PPU line 0) ---- */
@@ -781,14 +854,31 @@ static void snapshot(GBContext *ctx) {
     }
     s.build_count = 0;
 
-    int was_valid = s.valid;
+    int was_wide = s.wide;
     s.valid = validate_scene(ctx);
-    if (s.valid != was_valid && gb_custom_width > GB_SCREEN_WIDTH) s.flips++;
-    if (!s.valid) {
+    if (s.valid) {
+        s.fail_run = 0;
+        s.wide = 1;                     /* recover instantly */
+    } else {
+        s.fail_run++;
+        /* Hold the wide view on the last proven-good margins until the run of
+         * rejections is long enough to be a real scene change. */
+        if (s.fail_run >= SML2_FALLBACK_DEBOUNCE || !s_good_valid) s.wide = 0;
+    }
+    if (s.wide != was_wide && gb_custom_width > GB_SCREEN_WIDTH) s.flips++;
+    if (!s.wide) {
         s.bound_left = s.bound_right = 0;
         s.extra_left = s.extra_right = 0;
         s.count = 0;
         s.fallbacks++;
+        s.narrowed++;
+        if (!s.valid) s_good_valid = 0;   /* nothing good to hold on to now */
+        return;
+    }
+    if (!s.valid) {
+        /* Debounce window: present the last accepted frame's world. */
+        frame_restore();
+        s.debounced++;
         return;
     }
     compute_bounds();
@@ -798,6 +888,8 @@ static void snapshot(GBContext *ctx) {
     s.extra_right = (s.view_left + s.view_width) - (s.left + GB_SCREEN_WIDTH);
     if (s.extra_left < 0) s.extra_left = 0;
     if (s.extra_right < 0) s.extra_right = 0;
+
+    frame_save();
 
     if (getenv("SML2_ADAPTIVE_TRACE") && s.frame % 120 == 0) {
         fprintf(stderr,
@@ -864,7 +956,7 @@ static void draw_sprite(uint32_t *out, int width, Sml2Sprite sp) {
 /* ---- the compositor ---- */
 
 static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *native) {
-    if (!s.valid || !ctx->rom || width <= GB_SCREEN_WIDTH) return 0;
+    if (!s.wide || !ctx->rom || width <= GB_SCREEN_WIDTH) return 0;
     if (width != s.view_width) {
         s.view_width = width;
         s.view_left = view_left_for(s.left, width);
@@ -979,6 +1071,11 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
 static void reset(GBContext *ctx) {
     GBPPU *ppu = (GBPPU *)ctx->ppu;
     if (ppu->view_stride != GB_SCREEN_WIDTH) ppu_set_view_margins(ppu, 0, 0);
+    /* A state load rewinds the guest but not this module: drop the frozen
+     * frame rather than compose the new world with the old one's margins. */
+    s_good_valid = 0;
+    s.wide = 0;
+    s.fail_run = 0;
     s.valid = 0;
     s.count = s.build_count = 0;
     s.bound_left = s.bound_right = 0;
@@ -989,6 +1086,8 @@ static void reset(GBContext *ctx) {
 
 void sml2_adaptive_init(GBContext *ctx) {
     memset(&s, 0, sizeof s);
+    memset(&s_good, 0, sizeof s_good);
+    s_good_valid = 0;
     s.ctx = ctx;
     gb_custom_render = NULL;
     gb_custom_snapshot = NULL;
@@ -1112,11 +1211,13 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt(
             "{\"id\":%d,\"ok\":true,\"seq\":%u,\"first\":%u,\"dropped\":%u,"
             "\"frames\":%u,\"scored\":%u,\"flips\":%u,\"fallbacks\":%u,"
+            "\"debounced\":%u,\"narrowed\":%u,\"attr_byte_diff\":%u,"
             "\"reasons\":{%s}}",
             id, seq, first,
             seq > SML2_GATE_LOG_CAP && (unsigned)since < seq - SML2_GATE_LOG_CAP
                 ? (seq - SML2_GATE_LOG_CAP) - (unsigned)since : 0u,
-            s.gate_frames, s.gate_scene, s.flips, s.fallbacks, reasons);
+            s.gate_frames, s.gate_scene, s.flips, s.fallbacks,
+            s.debounced, s.narrowed, s.attr_byte_diff, reasons);
         for (unsigned k = first; k < seq; k++) {
             const Sml2GateEvent *e = &s.gate_log[k % SML2_GATE_LOG_CAP];
             char cells[512];
@@ -1209,7 +1310,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,"
         "\"gate_scene\":%u,\"gate_tile_fail\":%u,\"gate_attr_fail\":%u,"
         "\"reject\":\"%s\",\"flips\":%u,\"gate_frames\":%u,\"gate_log_seq\":%u,"
-        "\"attr_byte_diff\":%u,"
+        "\"attr_byte_diff\":%u,\"wide\":%d,\"fail_run\":%d,"
+        "\"debounced\":%u,\"narrowed\":%u,\"debounce\":%d,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
@@ -1219,6 +1321,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
         s.reject >= 0 && s.reject < SML2_REJ_COUNT ? k_reject_name[s.reject] : "?",
         s.flips, s.gate_frames, s.gate_log_seq, s.attr_byte_diff,
+        s.wide, s.fail_run, s.debounced, s.narrowed, SML2_FALLBACK_DEBOUNCE,
         s.sprite_pal_mask, s.sprite_bank1, s.frame);
     return 1;
 }

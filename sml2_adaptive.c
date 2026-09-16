@@ -57,6 +57,58 @@
 #define SML2_SCX_SHADOW      0xA2B1u   /* read by 03:409B for the actor screen X   */
 #define SML2_SCX_PC          0x409Eu
 
+/* ---- enemy spawn scanner (02:4C31 right / 02:4CEB left) -------------------
+ *
+ * Verified byte-for-byte at these addresses on BOTH images -- UE V1.0
+ * (D5EC24E4) and SML2 DX v1.8.1 (F0799017) -- see ADAPTIVE.md:
+ *
+ *   02:4068  the builder compares the live camera against last frame's copy in
+ *            $AF24/$AF25 and takes one of three branches;
+ *   02:4085  scrolled right: $AF22 = +1, $AF00 = [$AF12], $AF01 = [$AF13] & $F8
+ *   02:409A  did not scroll: $AF00 = $FF, and the scanner returns immediately
+ *   02:40A4  scrolled left:  $AF22 = -1, $AF00 = [$AF14], $AF01 = [$AF15] & $F8
+ *   02:417D  call 4C31, then latch the camera into $AF24/$AF25 for next frame
+ *   02:4C31  dispatch on $AF22; 4C3C scans forward, 4CEB scans backward
+ *   02:4C52  cp  the record's X high byte against $AF00
+ *   02:4C56  hl += 6 and STORE it back to $AF1E/$AF1F -- the entry is consumed
+ *   02:4C6E  cp  the record's X low byte against $AF01; below -> consume,
+ *            above -> return, EQUAL -> spawn. Exact equality, nothing else.
+ *
+ * So the scan edge is (camX +- 112) with its low byte masked to 8 px, and any
+ * list entry the edge steps over without landing on is eaten. Extended spawns
+ * therefore overrides the builder's reads of $AF12..$AF15 -- one frame's scan
+ * window -- and lets the ROM derive, align, compare and consume exactly as it
+ * always does; the only requirement is that the edge we feed it never advances
+ * more than 8 px between two frames the scanner actually runs. */
+#define SML2_SPAWN_UPPER_HI  0xAF12u   /* camX + 112, big endian, right scan   */
+#define SML2_SPAWN_UPPER_LO  0xAF13u
+#define SML2_SPAWN_LOWER_HI  0xAF14u   /* camX - 112, clamped at 0, left scan  */
+#define SML2_SPAWN_LOWER_LO  0xAF15u
+#define SML2_SPAWN_HALF      112
+#define SML2_SPAWN_R_HI_PC   0x408Au   /* ld a,[$AF12] in the right branch     */
+#define SML2_SPAWN_R_LO_PC   0x4090u   /* ld a,[$AF13]                         */
+#define SML2_SPAWN_L_HI_PC   0x40A9u   /* ld a,[$AF14] in the left branch      */
+#define SML2_SPAWN_L_LO_PC   0x40AFu   /* ld a,[$AF15]                         */
+#define SML2_SPAWN_RAMP      8         /* the scanner's own alignment quantum  */
+#define SML2_SCAN_EDGE       0xAF00u   /* hi, then lo & $F8                    */
+#define SML2_SCAN_NONE       0xFFu     /* edge HIGH byte only: do not scan     */
+/* $AF22 is +1 (right) or $FF (left) on a frame that scans. On a frame that does
+ * NOT -- 02:409A -- the branch stores the camera's own low byte there and marks
+ * the frame by writing $FF into the edge's high byte alone, leaving the low
+ * byte stale. The scanner's own test is cp $FF on $AF00 (02:4C3C / 02:4CEB), so
+ * $AF22 must never be read as "did it scan". */
+#define SML2_SCAN_DIR        0xAF22u
+#define SML2_SPAWN_CURSOR    0xAF1Eu   /* big-endian pointer into the list     */
+#define SML2_SPAWN_LIST      0xAB00u   /* $AB00 is six $FF bytes: the left stop */
+#define SML2_SPAWN_LIST_SIZE 0x200u
+#define SML2_SPAWN_RECORD    6         /* X hi, X lo, flags, then 3 payload    */
+/* +1: the last record that can start inside the region begins at offset 510,
+ * which indexes 85, so the tag array needs 86 entries. */
+#define SML2_SPAWN_RECORDS   (SML2_SPAWN_LIST_SIZE / SML2_SPAWN_RECORD + 1)
+#define SML2_SPAWN_RING      64
+#define SML2_SIDE_RIGHT      0
+#define SML2_SIDE_LEFT       1
+
 typedef struct {
     int x, y;            /* world pixels, top-left of the 8x8 piece */
     uint8_t tile, attr;
@@ -221,6 +273,34 @@ static struct {
     uint8_t map[SML2_MAP_SIZE];
     uint8_t blockdef[SML2_BLOCKDEF_SIZE];
     uint8_t box[SML2_SCROLLBOX_LEN];
+    /* ---- enemy spawn policy ------------------------------------------------
+     * spawn_extend is the user's choice (Original leaves every scanner input
+     * vanilla and installs nothing). scan_edge[] is the edge actually handed to
+     * the builder on the last frame the scanner ran in that direction, which is
+     * what the <= 8 px ramp is measured against; -1 means "engage from vanilla".
+     *
+     * The accounting below is ALWAYS ON whenever the compositor is installed --
+     * in BOTH policies, not armed by a probe -- because "did we eat an entry"
+     * is only answerable by watching every frame: the scanner consumes
+     * silently, and by the time anyone asks, the entry is gone. Each frame it
+     * re-reads the cursor and the edge the ROM just used and classifies every
+     * record the cursor stepped over as spawned (its X equalled the edge) or
+     * jumped (it did not). With the mod OFF nothing is installed at all, by
+     * design -- that build is the faithful one -- so tools/probe_spawns.py
+     * derives the same ledger from the same RAM for its reference run, and
+     * cross-checks this one against it. */
+    int spawn_extend;
+    int scan_edge[2], scan_pick[2], scan_pick_frame[2];
+    int scan_reach_max[2], scan_lag_max[2];
+    unsigned scan_hi[2], scan_lo[2], scan_unpaired, scan_resets;
+    unsigned spawn_ungated;   /* builder reads handed back vanilla: !s.valid */
+    int spawn_cursor, spawn_level;
+    unsigned spawn_passed, spawn_spawned, spawn_jumped, spawn_scans;
+    uint8_t spawn_list[SML2_SPAWN_LIST_SIZE];
+    uint8_t spawn_seen[SML2_SPAWN_RECORDS];   /* 1 spawned, 2 jumped over */
+    struct { int frame, cam_x, edge, x, addr; } spawn_ring[SML2_SPAWN_RING];
+    unsigned spawn_ring_n;
+    int cam_prev, cam_prev_ok;
     Sml2Sprite sprite[SML2_MAX_SPRITES], build[SML2_MAX_SPRITES];
     uint8_t opaque[GB_CUSTOM_FRAME_SIZE];
 } s;
@@ -262,6 +342,18 @@ static uint8_t peek_wram_bank(GBContext *ctx, unsigned bank, unsigned a) {
     if (!ctx->wram || a < 0xD000u || a >= 0xE000u) return 0;
     if (bank == 0) bank = 1;                       /* SVBK 0 aliases bank 1 */
     return ctx->wram[(bank & 7u) * 0x1000u + (a - 0xD000u)];
+}
+
+/* $A000-$BFFF out of an EXPLICIT cart RAM bank, for the same reason
+ * peek_wram_bank exists for WRAM. The compositor can afford to follow the live
+ * bank because validate_scene() refuses any frame where it is not the level's
+ * (SML2_REJ_RAMBANK); the spawn ledger cannot, because it runs on EVERY frame,
+ * including the ones the gate refuses, and a misread there invents entries that
+ * were never consumed. */
+static uint8_t peek_eram_bank(GBContext *ctx, unsigned bank, unsigned a) {
+    if (!ctx->eram || a < 0xA000u || a >= 0xC000u) return 0;
+    unsigned o = bank * 0x2000u + (a - 0xA000u);
+    return ctx->eram && o < ctx->eram_size ? ctx->eram[o] : 0;
 }
 
 /* Every read of the game's LEVEL state goes through this, never through the
@@ -742,6 +834,102 @@ static void capture_actor(GBContext *ctx) {
     }
 }
 
+/* ---- enemy spawn policy --------------------------------------------------
+ *
+ * Extended target: the scanner's own 112 px reach measured from the edge of
+ * what the player can actually see, not from the native 160 px strip. The view
+ * is already clamped to the run of scroll boxes the camera may reach, so
+ * extra_left/extra_right carry the level's bounds; the extra clamp here is the
+ * level's own 4096 px extent.
+ *
+ * Ramp: the value returned climbs toward that target by at most 8 px per call,
+ * and a call happens exactly once per frame the builder takes that direction's
+ * branch -- i.e. once per frame the scanner actually runs that way. The edge
+ * the ROM derives is this value with its low byte masked to 8 px, so a step of
+ * at most 8 lands on every 8-px-aligned value in between and no list entry is
+ * stepped over. Lagging BEHIND vanilla is safe and is left alone: a lower edge
+ * only makes the scanner stop earlier, and nothing is consumed. */
+static int spawn_edge(int side) {
+    if (s.scan_pick_frame[side] == s.frame) return s.scan_pick[side];
+    int vanilla = side == SML2_SIDE_RIGHT ? s.cam_x + SML2_SPAWN_HALF
+                                          : s.cam_x - SML2_SPAWN_HALF;
+    int target = side == SML2_SIDE_RIGHT ? vanilla + s.extra_right
+                                         : vanilla - s.extra_left;
+    if (target < 0) target = 0;
+    if (target > SML2_MAP_COLS * 16) target = SML2_MAP_COLS * 16;
+    int prev = s.scan_edge[side] < 0 ? vanilla : s.scan_edge[side];
+    int edge = target;
+    if (side == SML2_SIDE_RIGHT) {
+        if (edge > prev + SML2_SPAWN_RAMP) edge = prev + SML2_SPAWN_RAMP;
+    } else if (edge < prev - SML2_SPAWN_RAMP) {
+        edge = prev - SML2_SPAWN_RAMP;
+    }
+    if (edge < 0) edge = 0;
+    if (edge > 0xFFFF) edge = 0xFFFF;
+    s.scan_edge[side] = edge;
+    s.scan_pick[side] = edge;
+    s.scan_pick_frame[side] = s.frame;
+    int reach = side == SML2_SIDE_RIGHT ? edge - vanilla : vanilla - edge;
+    if (reach > s.scan_reach_max[side]) s.scan_reach_max[side] = reach;
+    if (-reach > s.scan_lag_max[side]) s.scan_lag_max[side] = -reach;
+    return edge;
+}
+
+static void spawn_forget(void) {
+    s.scan_edge[SML2_SIDE_RIGHT] = s.scan_edge[SML2_SIDE_LEFT] = -1;
+    s.scan_pick_frame[SML2_SIDE_RIGHT] = s.scan_pick_frame[SML2_SIDE_LEFT] = -1;
+}
+
+/* One frame of the scanner's history, read back from the state it left behind:
+ * $AF1E/$AF1F is where its cursor stopped and $AF00/$AF01 is the edge it used,
+ * neither of which anything else in the ROM touches between two of these calls.
+ * Every record the cursor stepped over was evaluated; the ones whose X equalled
+ * the edge spawned, the rest were consumed and are gone. */
+static void spawn_account(GBContext *ctx) {
+#define SPAWN_PEEK(a) peek_eram_bank(ctx, SML2_LEVEL_RAM_BANK, (a))
+    int level = SPAWN_PEEK(SML2_HEADER + 0x0A) | (SPAWN_PEEK(SML2_LEVEL_BANK) << 8);
+    if (level != s.spawn_level) {
+        s.spawn_level = level;
+        s.spawn_cursor = -1;
+        memset(s.spawn_seen, 0, sizeof s.spawn_seen);
+        spawn_forget();
+    }
+    int cursor = (SPAWN_PEEK(SML2_SPAWN_CURSOR) << 8) | SPAWN_PEEK(SML2_SPAWN_CURSOR + 1);
+    uint8_t edge_hi = SPAWN_PEEK(SML2_SCAN_EDGE);
+    int edge = ((edge_hi << 8) | SPAWN_PEEK(SML2_SCAN_EDGE + 1)) & 0xFFF8;
+    int lo = (int)SML2_SPAWN_LIST, hi = lo + (int)SML2_SPAWN_LIST_SIZE;
+    if (edge_hi != SML2_SCAN_NONE &&
+        s.spawn_cursor >= lo && s.spawn_cursor < hi && cursor >= lo && cursor < hi &&
+        cursor != s.spawn_cursor && (cursor - s.spawn_cursor) % SML2_SPAWN_RECORD == 0) {
+        int step = cursor > s.spawn_cursor ? SML2_SPAWN_RECORD : -SML2_SPAWN_RECORD;
+        int n = (cursor - s.spawn_cursor) / step;
+        s.spawn_scans++;
+        for (int k = 0; k < n; k++) {
+            int addr = s.spawn_cursor + step * k;
+            int off = addr - lo;
+            int x = (s.spawn_list[off] << 8) | s.spawn_list[off + 1];
+            s.spawn_passed++;
+            if (x == edge) {
+                s.spawn_spawned++;
+                s.spawn_seen[off / SML2_SPAWN_RECORD] |= 1u;
+            } else {
+                s.spawn_jumped++;
+                s.spawn_seen[off / SML2_SPAWN_RECORD] |= 2u;
+                unsigned slot = s.spawn_ring_n++ % SML2_SPAWN_RING;
+                s.spawn_ring[slot].frame = s.frame;
+                s.spawn_ring[slot].cam_x = s.cam_x;
+                s.spawn_ring[slot].edge = edge;
+                s.spawn_ring[slot].x = x;
+                s.spawn_ring[slot].addr = addr;
+            }
+        }
+    }
+    s.spawn_cursor = cursor;
+    for (unsigned i = 0; i < SML2_SPAWN_LIST_SIZE; i++)
+        s.spawn_list[i] = SPAWN_PEEK(SML2_SPAWN_LIST + i);
+#undef SPAWN_PEEK
+}
+
 static void read_tap(GBContext *ctx, uint16_t address) {
     if (address != SML2_TAP_ADDR || !is_draw_bank(ctx->rom_bank)) return;
     if (ctx->pc != SML2_TAP_PC && ctx->pc != SML2_TAP_PC - 2) return;
@@ -754,9 +942,17 @@ static void read_tap(GBContext *ctx, uint16_t address) {
  *    rebuilt each frame by 02:4000 as camX +- 0x60 / +- 0xA0 and consumed
  *    through the ROM0 memcpy at $3CAA. Widening them by the view's own margins
  *    lets vanilla-spawned actors act and stay alive across the whole view. The
- *    spawn scanner's own window ($AF12..$AF15) is deliberately untouched, so
- *    spawn points and the list cursor stay exactly vanilla.
- * 2. The actor draw routine computes a screen X modulo 256 (03:409F). An actor
+ *    spawn scanner's own window is widened only when the player asks for it
+ *    (2, below); with the default Original policy it is untouched, so spawn
+ *    points and the list cursor stay exactly vanilla.
+ * 2. Enemy spawns, when the player asked for Extended. The builder's own reads
+ *    of the spawn-scan window ($AF12/$AF13 scrolling right, $AF14/$AF15
+ *    scrolling left) are answered with a window that reaches the visible view
+ *    edge, ramped by at most 8 px per scanning frame. The ROM still does the
+ *    $F8 alignment, the direction choice, the equality test, the difficulty
+ *    filter and the slot allocation -- only the edge moves. Original installs
+ *    nothing here and every scanner input stays exactly vanilla.
+ * 3. The actor draw routine computes a screen X modulo 256 (03:409F). An actor
  *    that the widened activation kept alive far off the native screen would
  *    alias back into it as a ghost. Presenting 03:409B with a scroll shadow
  *    that puts such an actor at screen X 0xB8 makes the ROM's own 03:4025 test
@@ -785,6 +981,39 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
             case 0x0D: return (uint8_t)lower;
             default: return value;
         }
+    }
+
+    /* s.wide (the caller's gate) is the PRESENTATION decision and stays true
+     * through the debounce window on a stale world; s.valid is the proof that
+     * this frame's world was actually decoded. Pixels may be stale for six
+     * frames; a spawn may not be, because the scanner consumes what it passes.
+     * So this override alone additionally requires s.valid, and every read it
+     * declines is counted rather than passed over in silence. */
+    if (s.spawn_extend && !s.valid &&
+        address >= SML2_SPAWN_UPPER_HI && address <= SML2_SPAWN_LOWER_LO &&
+        ctx->rom_bank == 2) {
+        s.spawn_ungated++;
+        return value;
+    }
+    if (s.spawn_extend && s.valid && ctx->rom_bank == 2 &&
+        address >= SML2_SPAWN_UPPER_HI && address <= SML2_SPAWN_LOWER_LO) {
+        int side = address <= SML2_SPAWN_UPPER_LO ? SML2_SIDE_RIGHT : SML2_SIDE_LEFT;
+        int high = address == SML2_SPAWN_UPPER_HI || address == SML2_SPAWN_LOWER_HI;
+        unsigned site = high ? (side ? SML2_SPAWN_L_HI_PC : SML2_SPAWN_R_HI_PC)
+                             : (side ? SML2_SPAWN_L_LO_PC : SML2_SPAWN_R_LO_PC);
+        /* ld a,[nn] is three bytes; the generated code reports the NEXT
+         * instruction, the interpreter reports the instruction itself. */
+        if (pc != site && pc != site + 3) return value;
+        if (high) {
+            s.scan_hi[side]++;
+            return (uint8_t)(spawn_edge(side) >> 8);
+        }
+        /* The low byte must come from the SAME chosen edge as the high byte the
+         * builder read six bytes ago, never from a fresh ramp step. */
+        if (s.scan_pick_frame[side] < 0) return value;
+        s.scan_lo[side]++;
+        if (s.scan_pick_frame[side] != s.frame) s.scan_unpaired++;
+        return (uint8_t)s.scan_pick[side];
     }
 
     if (address == SML2_SCX_SHADOW && is_draw_bank(ctx->rom_bank) &&
@@ -866,6 +1095,18 @@ static void snapshot(GBContext *ctx) {
 
     s.cam_x = peek16(ctx, SML2_CAM_X);
     s.cam_y = peek16(ctx, SML2_CAM_Y);
+    /* Always on, in both policies: charge the previous frame's scanner run
+     * before anything this frame can move the cursor again. */
+    spawn_account(ctx);
+    /* A camera that moved further than the scanner's own 8 px quantum in one
+     * frame -- a warp, a room change, a state load -- is a discontinuity the
+     * ramp cannot bridge, so re-engage from vanilla rather than chase it. */
+    if (s.cam_prev_ok && abs(s.cam_x - s.cam_prev) > SML2_SPAWN_RAMP) {
+        spawn_forget();
+        s.scan_resets++;
+    }
+    s.cam_prev = s.cam_x;
+    s.cam_prev_ok = 1;
     s.left = s.cam_x - SML2_CAM_CENTRE_X;
     s.top = s.cam_y - SML2_CAM_CENTRE_Y;
     /* Follow the scroll registers the hardware is actually displaying: screen
@@ -925,12 +1166,28 @@ static void snapshot(GBContext *ctx) {
             default: break;
         }
         if (!s.valid) s_good_valid = 0;   /* nothing good to hold on to now */
+        /* Fail closed on spawns: the gate refused this frame, so the widened
+         * scan edge is unproven. The override hands back the guest's own
+         * camX +- 112 and the ramp re-engages from the vanilla edge on the
+         * next frame the gate accepts, instead of resuming a stale one. */
+        spawn_forget();
         return;
     }
     if (!s.valid) {
-        /* Debounce window: present the last accepted frame's world. */
+        /* Debounce window: present the last accepted frame's world.
+         *
+         * That world is deliberately STALE -- which is right for pixels and
+         * wrong for spawns. frame_restore() puts the last accepted frame's
+         * cam_x and extra_left/extra_right back into s, so a widened edge
+         * computed here would be measured from a camera the guest has already
+         * left, and the spawn scanner CONSUMES what it passes: an entry given
+         * away on an unproven frame cannot be taken back, unlike a pixel. So
+         * the debounce window widens the view but never the spawn window --
+         * same fail-closed rule as a rejected frame, and the ramp re-engages
+         * from vanilla when the gate proves a frame again. */
         frame_restore();
         s.debounced++;
+        spawn_forget();
         return;
     }
     compute_bounds();
@@ -1132,6 +1389,9 @@ static void reset(GBContext *ctx) {
     s.count = s.build_count = 0;
     s.bound_left = s.bound_right = 0;
     s.extra_left = s.extra_right = 0;
+    s.cam_prev_ok = 0;
+    s.spawn_cursor = -1;
+    spawn_forget();
 }
 
 /* ---- install ---- */
@@ -1141,6 +1401,9 @@ void sml2_adaptive_init(GBContext *ctx) {
     memset(&s_good, 0, sizeof s_good);
     s_good_valid = 0;
     s.ctx = ctx;
+    s.spawn_cursor = -1;
+    s.spawn_level = -1;
+    spawn_forget();
     gb_custom_render = NULL;
     gb_custom_snapshot = NULL;
     gb_custom_reset = NULL;
@@ -1160,13 +1423,15 @@ void sml2_adaptive_init(GBContext *ctx) {
         return;
     }
     gb_custom_requested_width = mods->width;
+    s.spawn_extend = mods->spawns == SML2_SPAWNS_EXTENDED;
     gb_custom_render = render;
     gb_custom_snapshot = snapshot;
     gb_custom_reset = reset;
     gb_custom_read_tap = read_tap;
     gb_custom_read_override = read_override;
-    fprintf(stderr, "[ADAPTIVE] Super Mario Land 2 compositor installed, width=%d\n",
-            gb_custom_requested_width);
+    fprintf(stderr,
+            "[ADAPTIVE] Super Mario Land 2 compositor installed, width=%d, spawns=%s\n",
+            gb_custom_requested_width, s.spawn_extend ? "extended" : "original");
 }
 
 /* ---- debug commands (probe surface) ---- */
@@ -1185,10 +1450,12 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         const char *note = sml2_adaptive_margin_note(NULL);
         gb_debug_server_send_fmt(
             "{\"id\":%d,\"enabled\":%d,\"width\":%d,\"requested\":%d,"
-            "\"dx\":%d,\"dx_available\":%d,\"body\":\"%s\",\"margins\":%d}",
+            "\"dx\":%d,\"dx_available\":%d,\"body\":\"%s\",\"margins\":%d,"
+            "\"spawns\":%d,\"spawns_hooked\":%d}",
             id, gb_custom_render != NULL, gb_custom_width,
             gb_custom_requested_width,
-            m->dx, sml2_dx_patch_available(), body ? body : "", note == 0);
+            m->dx, sml2_dx_patch_available(), body ? body : "", note == 0,
+            m->spawns, s.spawn_extend);
         return 1;
     }
     if (!strcmp(cmd, "sml2_width")) {
@@ -1378,6 +1645,53 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
             s.scx, s.scy, s.left, s.top, rows, detail);
         return 1;
     }
+    if (!strcmp(cmd, "sml2_spawn_state")) {
+        /* The whole spawn list as the game holds it, each record tagged with
+         * what the scanner has done with it so far, plus the tail of the
+         * always-on ring of entries the cursor stepped over without spawning.
+         * No arming and no stepping: every frame since boot is already in it. */
+        char recs[6144];
+        int n = 0, count = 0;
+        recs[n++] = '[';
+        for (unsigned off = SML2_SPAWN_RECORD;
+             off + SML2_SPAWN_RECORD <= SML2_SPAWN_LIST_SIZE && count < 160;
+             off += SML2_SPAWN_RECORD) {
+            if (s.spawn_list[off] == 0xFFu) break;
+            n += snprintf(recs + n, sizeof recs - (size_t)n,
+                          "%s{\"a\":%u,\"x\":%u,\"f\":%u,\"seen\":%u}",
+                          count ? "," : "", SML2_SPAWN_LIST + off,
+                          (unsigned)((s.spawn_list[off] << 8) | s.spawn_list[off + 1]),
+                          s.spawn_list[off + 2],
+                          s.spawn_seen[off / SML2_SPAWN_RECORD]);
+            count++;
+        }
+        recs[n++] = ']';
+        recs[n] = '\0';
+        char ring[3072];
+        int r = 0, shown = 0;
+        unsigned total = s.spawn_ring_n;
+        unsigned first = total > SML2_SPAWN_RING ? total - SML2_SPAWN_RING : 0;
+        ring[r++] = '[';
+        for (unsigned i = first; i < total; i++) {
+            unsigned slot = i % SML2_SPAWN_RING;
+            r += snprintf(ring + r, sizeof ring - (size_t)r,
+                          "%s{\"frame\":%d,\"cam_x\":%d,\"edge\":%d,\"x\":%d,\"a\":%d}",
+                          shown ? "," : "", s.spawn_ring[slot].frame,
+                          s.spawn_ring[slot].cam_x, s.spawn_ring[slot].edge,
+                          s.spawn_ring[slot].x, s.spawn_ring[slot].addr);
+            shown++;
+        }
+        ring[r++] = ']';
+        ring[r] = '\0';
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"extend\":%d,\"level\":%d,\"cursor\":%d,"
+            "\"passed\":%u,\"spawned\":%u,\"jumped\":%u,\"scans\":%u,"
+            "\"records\":%s,\"skips\":%s,\"skip_total\":%u}",
+            id, s.spawn_extend, s.spawn_level, s.spawn_cursor,
+            s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_scans,
+            recs, ring, s.spawn_ring_n);
+        return 1;
+    }
     if (strcmp(cmd, "sml2_view")) return 0;
     gb_debug_server_send_fmt(
         "{\"id\":%d,\"valid\":%d,\"mode\":%d,\"width\":%d,\"left\":%d,\"top\":%d,"
@@ -1391,7 +1705,12 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"attr_byte_diff\":%u,\"wide\":%d,\"fail_run\":%d,"
         "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
         "\"pillarbox_model\":%u,\"debounce\":%d,"
-        "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
+        "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
+        "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
+        "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
+        "\"spawn_unpaired\":%u,\"spawn_resets\":%u,\"spawn_cursor\":%d,"
+        "\"spawn_passed\":%u,\"spawn_spawned\":%u,\"spawn_jumped\":%u,"
+        "\"spawn_scans\":%u,\"spawn_ungated\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
         s.attr_hit, s.attr_total, s.attr_prio_diff, s.cgb, s.attr_ok,
@@ -1402,6 +1721,14 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.flips, s.gate_frames, s.gate_log_seq, s.attr_byte_diff,
         s.wide, s.fail_run, s.debounced, s.narrowed, s.narrowed_model,
         s.pillarbox_model, SML2_FALLBACK_DEBOUNCE,
-        s.sprite_pal_mask, s.sprite_bank1, s.frame);
+        s.sprite_pal_mask, s.sprite_bank1,
+        s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
+        s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],
+        s.scan_lag_max[SML2_SIDE_RIGHT], s.scan_lag_max[SML2_SIDE_LEFT],
+        s.scan_hi[SML2_SIDE_RIGHT], s.scan_lo[SML2_SIDE_RIGHT],
+        s.scan_hi[SML2_SIDE_LEFT], s.scan_lo[SML2_SIDE_LEFT],
+        s.scan_unpaired, s.scan_resets, s.spawn_cursor,
+        s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_scans,
+        s.spawn_ungated, s.frame);
     return 1;
 }

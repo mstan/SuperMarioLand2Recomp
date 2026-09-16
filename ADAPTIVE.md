@@ -63,11 +63,11 @@ is 512; Fit follows the live window aspect from 160 to 4096 and re-resolves when
 the window is resized or made fullscreen. A window taller than 10:9 stays at
 native width and letterboxes.
 
-The **Enemy spawns** option offers **Original** (default) and **Extended**, and
+The **Enemy spawns** option offers **Extended** (default) and **Original**, and
 is saved as `Spawns=` in the same file. See [Enemy spawns](#enemy-spawns): the
-default keeps the game's own spawn timing, which is gameplay rather than
-presentation, and Extended moves the spawn point out to the edge of what the
-player can actually see.
+default moves the spawn point out to the edge of what the player can actually
+see, so enemies walk in rather than pop in; Original keeps the game's own spawn
+timing untouched for anyone who wants vanilla gameplay decisions.
 
 Environment overrides (seed the launcher controls, lose to the checkbox):
 `SML2_WIDESCREEN=fit | 16:9 | 21:9 | 32:9 | off | <integer width>` and
@@ -199,8 +199,8 @@ defaults to leaving it alone.
 
 | Choice | Spawn edge | Effect |
 |---|---|---|
-| **Original** (default) | `camX +- 112`, the ROM's own | exactly vanilla spawn decisions; enemies pop in at the native screen edge inside the wide view |
-| **Extended** | `camX +- (112 + that side's view margin)` | enemies spawn at the edge of the composed view, ramped so none is lost |
+| **Original** | `camX +- 112`, the ROM's own | exactly vanilla spawn decisions; enemies pop in at the native screen edge inside the wide view |
+| **Extended** (default) | `camX +- (112 + that side's view margin)` | enemies spawn at the edge of the composed view, ramped so none is lost |
 
 ### What the ROM does
 
@@ -496,11 +496,12 @@ Headless throughput on this machine (4500 frames, same route):
 
 ## Known limits
 
-* **Spawn points are vanilla unless you ask for Extended.** With the default
-  Original the spawn scanner is untouched, so an enemy still appears inside the
-  margin rather than walking in from off view — the accepted cost of leaving
-  gameplay alone. Extended moves the edge out and ramps it at 8 px per scanning
-  frame so nothing is eaten; see [Enemy spawns](#enemy-spawns).
+* **Extended spawns change spawn timing.** The default Extended moves the
+  scan edge out to the composed view and ramps it at 8 px per scanning frame so
+  nothing is eaten, but enemies do become active earlier than on hardware.
+  Choose Original to keep the spawn scanner untouched; an enemy then appears
+  inside the margin rather than walking in from off view. See
+  [Enemy spawns](#enemy-spawns).
 * **Extended is bounded by the game's own 16 actor slots.** The scanner returns
   without advancing its cursor when no slot is free, so a crowded screen simply
   defers a spawn — that is vanilla behaviour, but a wide view reaches more

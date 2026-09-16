@@ -82,7 +82,7 @@ static int valid_width(int width) { return width == -1 || (width >= 160 && width
 static void load(const char *base) {
     if (loaded) return;
     loaded = 1;
-    settings = (SML2ModSettings){ 0, -1, 0, SML2_SPAWNS_ORIGINAL };
+    settings = (SML2ModSettings){ 0, -1, 0, SML2_SPAWNS_EXTENDED };
     snprintf(base_dir, sizeof(base_dir), "%s%s", base ? base : "",
              base && base[0] && base[strlen(base) - 1] != '/' && base[strlen(base) - 1] != '\\'
                  ? "/" : "");
@@ -277,7 +277,7 @@ static int option_get(void *ctx, const char *package_id, const char *feature_id,
      * game's own: the widened view alone never moves an enemy's spawn point. */
     if (pkg == PKG_WIDESCREEN && index == 1) {
         int mode = settings.spawns >= 0 && settings.spawns < SPAWN_COUNT
-                       ? settings.spawns : SML2_SPAWNS_ORIGINAL;
+                       ? settings.spawns : SML2_SPAWNS_EXTENDED;
         out->type = RECOMP_MOD_OPTION_CHOICE;
         out->choice_count = SPAWN_COUNT;
         COPY(out->id, "spawns");
@@ -287,7 +287,7 @@ static int option_get(void *ctx, const char *package_id, const char *feature_id,
              "original screen edge inside the wide view. Extended spawns them at the "
              "edge of what you can actually see, which changes gameplay.");
         COPY(out->value, spawn_modes[mode]);
-        COPY(out->default_value, spawn_modes[SML2_SPAWNS_ORIGINAL]);
+        COPY(out->default_value, spawn_modes[SML2_SPAWNS_EXTENDED]);
         return 1;
     }
     return 0;

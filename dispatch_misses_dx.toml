@@ -9,45 +9,4675 @@
 [[miss]]
 bank = 0
 addr = 0x01DE
-hits = 43
+hits = 388
+
+[[miss]]
+bank = 0
+addr = 0x0216
+hits = 2
+
+[[miss]]
+bank = 0
+addr = 0x076D
+hits = 1670
+
+[[miss]]
+bank = 0
+addr = 0x0781
+hits = 560
+
+[[miss]]
+bank = 0
+addr = 0x0789
+hits = 256
+
+[[miss]]
+bank = 0
+addr = 0x078B
+hits = 699
+
+[[miss]]
+bank = 0
+addr = 0x078D
+hits = 507
+
+[[miss]]
+bank = 0
+addr = 0x0799
+hits = 809
+
+[[miss]]
+bank = 0
+addr = 0x07A3
+hits = 649
+
+[[miss]]
+bank = 0
+addr = 0x0987
+hits = 3
+
+[[miss]]
+bank = 0
+addr = 0x098A
+hits = 4
+
+[[miss]]
+bank = 0
+addr = 0x09DB
+hits = 4
+
+[[miss]]
+bank = 0
+addr = 0x0D4F
+hits = 8292
+
+[[miss]]
+bank = 0
+addr = 0x0D82
+hits = 6853
+
+[[miss]]
+bank = 0
+addr = 0x12CE
+hits = 30182
+
+[[miss]]
+bank = 0
+addr = 0x14CF
+hits = 2500
+
+[[miss]]
+bank = 0
+addr = 0x1749
+hits = 20825
+
+[[miss]]
+bank = 0
+addr = 0x1771
+hits = 23457
 
 [[miss]]
 bank = 0
 addr = 0x18C7
+hits = 19
+
+[[miss]]
+bank = 0
+addr = 0x18CE
+hits = 9
+
+[[miss]]
+bank = 0
+addr = 0x18D9
 hits = 1
 
 [[miss]]
 bank = 0
+addr = 0x18DE
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x18EB
+hits = 34
+
+[[miss]]
+bank = 0
+addr = 0x18ED
+hits = 3
+
+[[miss]]
+bank = 0
+addr = 0x18F5
+hits = 8
+
+[[miss]]
+bank = 0
 addr = 0x1931
-hits = 2
+hits = 136
 
 [[miss]]
 bank = 0
 addr = 0x1932
-hits = 2
+hits = 147
 
 [[miss]]
 bank = 0
 addr = 0x193A
-hits = 2
+hits = 141
 
 [[miss]]
 bank = 0
 addr = 0x193C
-hits = 2
+hits = 146
+
+[[miss]]
+bank = 0
+addr = 0x193D
+hits = 65
+
+[[miss]]
+bank = 0
+addr = 0x194D
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x1FD4
+hits = 1
 
 [[miss]]
 bank = 0
 addr = 0x1FD7
+hits = 10
+
+[[miss]]
+bank = 0
+addr = 0x1FD9
+hits = 7
+
+[[miss]]
+bank = 0
+addr = 0x1FDB
+hits = 4
+
+[[miss]]
+bank = 0
+addr = 0x1FDD
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x1FDF
+hits = 2
+
+[[miss]]
+bank = 0
+addr = 0x1FF3
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x1FF5
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x1FF7
+hits = 6
+
+[[miss]]
+bank = 0
+addr = 0x1FF9
+hits = 3
+
+[[miss]]
+bank = 0
+addr = 0x208D
+hits = 200
+
+[[miss]]
+bank = 0
+addr = 0x2B0F
+hits = 1
+
+[[miss]]
+bank = 0
+addr = 0x3127
+hits = 2
+
+[[miss]]
+bank = 0
+addr = 0x3489
+hits = 42
+
+[[miss]]
+bank = 0
+addr = 0x34D9
+hits = 14
+
+[[miss]]
+bank = 0
+addr = 0x388E
+hits = 1294
+
+[[miss]]
+bank = 0
+addr = 0x388F
+hits = 431
+
+[[miss]]
+bank = 0
+addr = 0x3891
+hits = 79
+
+[[miss]]
+bank = 0
+addr = 0x3896
+hits = 4
+
+[[miss]]
+bank = 0
+addr = 0x3899
+hits = 30
+
+[[miss]]
+bank = 0
+addr = 0x389A
+hits = 182
+
+[[miss]]
+bank = 0
+addr = 0x389D
+hits = 537
+
+[[miss]]
+bank = 0
+addr = 0x38A7
+hits = 43
+
+[[miss]]
+bank = 0
+addr = 0x38A9
+hits = 73
+
+[[miss]]
+bank = 0
+addr = 0x38AD
+hits = 254
+
+[[miss]]
+bank = 0
+addr = 0x38B3
+hits = 12362
+
+[[miss]]
+bank = 0
+addr = 0x38B5
+hits = 5972
+
+[[miss]]
+bank = 0
+addr = 0x38E5
+hits = 77499
+
+[[miss]]
+bank = 1
+addr = 0x4672
+hits = 103971
+
+[[miss]]
+bank = 1
+addr = 0x591F
+hits = 22
+
+[[miss]]
+bank = 2
+addr = 0x4000
+hits = 10361
+
+[[miss]]
+bank = 2
+addr = 0x409A
+hits = 2311
+
+[[miss]]
+bank = 3
+addr = 0x6C1F
+hits = 7
+
+[[miss]]
+bank = 3
+addr = 0x6C20
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x4033
+hits = 134
+
+[[miss]]
+bank = 4
+addr = 0x4035
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x4047
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x4049
+hits = 37
+
+[[miss]]
+bank = 4
+addr = 0x404F
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x4057
+hits = 142
+
+[[miss]]
+bank = 4
+addr = 0x4059
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4068
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x406B
+hits = 17
+
+[[miss]]
+bank = 4
+addr = 0x406E
+hits = 10
+
+[[miss]]
+bank = 4
+addr = 0x4071
+hits = 32
+
+[[miss]]
+bank = 4
+addr = 0x4077
+hits = 21
+
+[[miss]]
+bank = 4
+addr = 0x4078
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x40E1
+hits = 122
+
+[[miss]]
+bank = 4
+addr = 0x40EF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x40F9
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x4108
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4114
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4116
+hits = 122
+
+[[miss]]
+bank = 4
+addr = 0x4117
+hits = 37
+
+[[miss]]
+bank = 4
+addr = 0x4119
+hits = 23
+
+[[miss]]
+bank = 4
+addr = 0x4123
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4126
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x412A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x422C
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x43E9
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4690
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x469A
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x46AC
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x46AF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x46BD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x46C2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x46D6
+hits = 121
+
+[[miss]]
+bank = 4
+addr = 0x46D7
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x46D8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x46E9
+hits = 252
+
+[[miss]]
+bank = 4
+addr = 0x46EB
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x4E93
+hits = 13
+
+[[miss]]
+bank = 4
+addr = 0x4E94
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4EAF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4F4D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4F5A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x4F5D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51A7
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x51A9
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x51AA
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51AD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51AE
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x51AF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51B2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51B4
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x51B8
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x51B9
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x51BA
+hits = 13
+
+[[miss]]
+bank = 4
+addr = 0x51BF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51CF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51D4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51D5
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51D6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51D7
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x51D9
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x51DB
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52AC
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52AD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52AE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52B0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52E4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x52EE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5404
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5407
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5408
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5417
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x541A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5424
+hits = 125
+
+[[miss]]
+bank = 4
+addr = 0x5425
+hits = 13
+
+[[miss]]
+bank = 4
+addr = 0x5427
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x544A
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x544B
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x544C
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x544D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x544F
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5453
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5455
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5462
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x546E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5474
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x548D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5497
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54B8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54BE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54C7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54EE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54EF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54F3
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54F4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x54FE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5502
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5525
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5528
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x552E
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5532
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5533
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5534
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5537
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x553C
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5547
+hits = 40
+
+[[miss]]
+bank = 4
+addr = 0x5548
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5549
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x554A
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x554B
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x554D
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x554E
+hits = 10
+
+[[miss]]
+bank = 4
+addr = 0x554F
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5551
+hits = 42
+
+[[miss]]
+bank = 4
+addr = 0x5553
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5557
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x555C
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x555D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x555E
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x555F
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5561
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5562
+hits = 42
+
+[[miss]]
+bank = 4
+addr = 0x5563
+hits = 14
+
+[[miss]]
+bank = 4
+addr = 0x5568
+hits = 126
+
+[[miss]]
+bank = 4
+addr = 0x556A
+hits = 132
+
+[[miss]]
+bank = 4
+addr = 0x556C
+hits = 86
+
+[[miss]]
+bank = 4
+addr = 0x556F
+hits = 31
+
+[[miss]]
+bank = 4
+addr = 0x5571
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x557D
+hits = 128
+
+[[miss]]
+bank = 4
+addr = 0x557E
+hits = 105
+
+[[miss]]
+bank = 4
+addr = 0x5580
+hits = 263
+
+[[miss]]
+bank = 4
+addr = 0x5581
+hits = 27
+
+[[miss]]
+bank = 4
+addr = 0x5582
+hits = 141
+
+[[miss]]
+bank = 4
+addr = 0x5583
+hits = 16
+
+[[miss]]
+bank = 4
+addr = 0x5585
+hits = 139
+
+[[miss]]
+bank = 4
+addr = 0x5586
+hits = 38
+
+[[miss]]
+bank = 4
+addr = 0x5588
+hits = 87
+
+[[miss]]
+bank = 4
+addr = 0x5589
+hits = 94
+
+[[miss]]
+bank = 4
+addr = 0x558B
+hits = 86
+
+[[miss]]
+bank = 4
+addr = 0x558D
+hits = 165
+
+[[miss]]
+bank = 4
+addr = 0x558E
+hits = 206
+
+[[miss]]
+bank = 4
+addr = 0x5592
+hits = 222
+
+[[miss]]
+bank = 4
+addr = 0x5597
+hits = 21
+
+[[miss]]
+bank = 4
+addr = 0x5598
+hits = 120
+
+[[miss]]
+bank = 4
+addr = 0x5607
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x5612
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5613
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x5615
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5619
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x561A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x561D
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5623
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x562A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x562B
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x562C
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x562E
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x563B
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x563C
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x563D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5643
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x5646
+hits = 120
+
+[[miss]]
+bank = 4
+addr = 0x564A
+hits = 20
+
+[[miss]]
+bank = 4
+addr = 0x564B
+hits = 58
+
+[[miss]]
+bank = 4
+addr = 0x564C
+hits = 17
+
+[[miss]]
+bank = 4
+addr = 0x565D
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x565F
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5662
+hits = 44
+
+[[miss]]
+bank = 4
+addr = 0x5664
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5669
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x566C
+hits = 21
+
+[[miss]]
+bank = 4
+addr = 0x566E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5671
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5673
+hits = 45
+
+[[miss]]
+bank = 4
+addr = 0x5676
+hits = 22
+
+[[miss]]
+bank = 4
+addr = 0x5678
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x567B
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x567D
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x5680
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5682
+hits = 41
+
+[[miss]]
+bank = 4
+addr = 0x5685
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5687
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x568A
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x568C
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x568F
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x5691
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5694
+hits = 39
+
+[[miss]]
+bank = 4
+addr = 0x5696
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x5698
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x569A
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x569B
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x569D
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x569E
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56A0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56A9
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56AA
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56AB
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56AC
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56AD
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x56AF
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x56B0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56B1
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x56B2
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56B4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56B9
+hits = 107
+
+[[miss]]
+bank = 4
+addr = 0x56BB
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56BC
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x56BE
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56C0
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56C2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56C5
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56C7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56CB
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56CC
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56D0
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x56D3
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56D4
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x56D6
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x56D8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56DB
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x56DC
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x56DD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56DF
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56E0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56E1
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56EC
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56EE
+hits = 41
+
+[[miss]]
+bank = 4
+addr = 0x56EF
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x56F2
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x56F6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x56F7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5706
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5707
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5709
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x570C
+hits = 32
+
+[[miss]]
+bank = 4
+addr = 0x5711
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5712
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5715
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5717
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x5719
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x571C
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x571D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5720
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5722
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5724
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5729
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x572B
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5731
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5733
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5736
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x5738
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x573B
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x573C
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x573D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x573E
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x573F
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5740
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5742
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5744
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5746
+hits = 31
+
+[[miss]]
+bank = 4
+addr = 0x5749
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x574A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x574C
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x574D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x574F
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x5751
+hits = 13
+
+[[miss]]
+bank = 4
+addr = 0x5756
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x5757
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x575B
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x575C
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x575D
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x575E
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5760
+hits = 31
+
+[[miss]]
+bank = 4
+addr = 0x5761
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5762
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x5765
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x577A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x577B
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5784
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5795
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x579C
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x579E
+hits = 30
+
+[[miss]]
+bank = 4
+addr = 0x57A1
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x57A7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57A9
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57AB
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57AE
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57B6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57C2
+hits = 18
+
+[[miss]]
+bank = 4
+addr = 0x57C4
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57C8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57CA
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57CC
+hits = 38
+
+[[miss]]
+bank = 4
+addr = 0x57CE
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x57CF
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x57D1
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x57D2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57D3
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57D4
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x57D5
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57D7
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57D9
+hits = 100
+
+[[miss]]
+bank = 4
+addr = 0x57DA
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57DB
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57DD
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x57DE
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x57DF
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x57E0
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x57E2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57E4
+hits = 37
+
+[[miss]]
+bank = 4
+addr = 0x57E6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57E7
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x57E8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57E9
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x57EB
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57EC
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x57ED
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x57EE
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x57EF
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x57F1
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x57F3
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x57F5
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x57F6
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x57FB
+hits = 171
+
+[[miss]]
+bank = 4
+addr = 0x57FD
+hits = 49
+
+[[miss]]
+bank = 4
+addr = 0x57FF
+hits = 115
+
+[[miss]]
+bank = 4
+addr = 0x5803
+hits = 27
+
+[[miss]]
+bank = 4
+addr = 0x5804
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x5805
+hits = 29
+
+[[miss]]
+bank = 4
+addr = 0x5808
+hits = 74
+
+[[miss]]
+bank = 4
+addr = 0x580B
+hits = 18
+
+[[miss]]
+bank = 4
+addr = 0x580F
+hits = 20
+
+[[miss]]
+bank = 4
+addr = 0x5810
+hits = 45
+
+[[miss]]
+bank = 4
+addr = 0x5813
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x5814
+hits = 18
+
+[[miss]]
+bank = 4
+addr = 0x5816
+hits = 176
+
+[[miss]]
+bank = 4
+addr = 0x5818
+hits = 151
+
+[[miss]]
+bank = 4
+addr = 0x5819
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x581B
+hits = 115
+
+[[miss]]
+bank = 4
+addr = 0x581C
+hits = 98
+
+[[miss]]
+bank = 4
+addr = 0x581D
+hits = 131
+
+[[miss]]
+bank = 4
+addr = 0x581F
+hits = 38
+
+[[miss]]
+bank = 4
+addr = 0x5824
+hits = 64
+
+[[miss]]
+bank = 4
+addr = 0x5827
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5829
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x582B
+hits = 27
+
+[[miss]]
+bank = 4
+addr = 0x582D
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x582F
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5831
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5835
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5837
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x583E
+hits = 41
+
+[[miss]]
+bank = 4
+addr = 0x5843
+hits = 58
+
+[[miss]]
+bank = 4
+addr = 0x5845
+hits = 88
+
+[[miss]]
+bank = 4
+addr = 0x584C
+hits = 78
+
+[[miss]]
+bank = 4
+addr = 0x5859
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x585F
+hits = 153
+
+[[miss]]
+bank = 4
+addr = 0x5863
+hits = 108
+
+[[miss]]
+bank = 4
+addr = 0x5867
+hits = 154
+
+[[miss]]
+bank = 4
+addr = 0x586A
+hits = 107
+
+[[miss]]
+bank = 4
+addr = 0x586C
+hits = 139
+
+[[miss]]
+bank = 4
+addr = 0x586F
+hits = 23
+
+[[miss]]
+bank = 4
+addr = 0x5872
+hits = 22
+
+[[miss]]
+bank = 4
+addr = 0x5873
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x587A
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x587B
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x587C
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x587D
+hits = 13
+
+[[miss]]
+bank = 4
+addr = 0x587F
+hits = 92
+
+[[miss]]
+bank = 4
+addr = 0x5880
+hits = 17
+
+[[miss]]
+bank = 4
+addr = 0x5881
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x5882
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5884
+hits = 103
+
+[[miss]]
+bank = 4
+addr = 0x5885
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5886
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5889
+hits = 114
+
+[[miss]]
+bank = 4
+addr = 0x588B
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x589C
+hits = 191
+
+[[miss]]
+bank = 4
+addr = 0x589D
+hits = 46
+
+[[miss]]
+bank = 4
+addr = 0x589F
+hits = 41
+
+[[miss]]
+bank = 4
+addr = 0x58C3
+hits = 258
+
+[[miss]]
+bank = 4
+addr = 0x58C4
+hits = 31
+
+[[miss]]
+bank = 4
+addr = 0x58C5
+hits = 47
+
+[[miss]]
+bank = 4
+addr = 0x58C8
+hits = 155
+
+[[miss]]
+bank = 4
+addr = 0x58C9
+hits = 24
+
+[[miss]]
+bank = 4
+addr = 0x58CA
+hits = 37
+
+[[miss]]
+bank = 4
+addr = 0x58CC
+hits = 92
+
+[[miss]]
+bank = 4
+addr = 0x58D0
+hits = 195
+
+[[miss]]
+bank = 4
+addr = 0x58D3
+hits = 74
+
+[[miss]]
+bank = 4
+addr = 0x58D4
+hits = 123
+
+[[miss]]
+bank = 4
+addr = 0x58D5
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58D8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58DA
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58DD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58E0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58E5
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x58E6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58EC
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x58ED
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x58EE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58EF
+hits = 10
+
+[[miss]]
+bank = 4
+addr = 0x58F0
+hits = 10
+
+[[miss]]
+bank = 4
+addr = 0x58F2
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58F3
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58F5
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x58F6
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x598E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x599C
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x599F
+hits = 16
+
+[[miss]]
+bank = 4
+addr = 0x59A2
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x59A7
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x59A9
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x59AB
+hits = 18
+
+[[miss]]
+bank = 4
+addr = 0x59AD
+hits = 51
+
+[[miss]]
+bank = 4
+addr = 0x59AF
+hits = 20
+
+[[miss]]
+bank = 4
+addr = 0x59B1
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x59B3
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x59B7
+hits = 15
+
+[[miss]]
+bank = 4
+addr = 0x59B9
+hits = 8
+
+[[miss]]
+bank = 4
+addr = 0x59BB
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x59BD
+hits = 57
+
+[[miss]]
+bank = 4
+addr = 0x59BF
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x59C2
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x59C4
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x59C8
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x59C9
+hits = 11
+
+[[miss]]
+bank = 4
+addr = 0x5A57
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A5B
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A5E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A5F
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A63
+hits = 12
+
+[[miss]]
+bank = 4
+addr = 0x5A68
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A69
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x5A6E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A6F
+hits = 9
+
+[[miss]]
+bank = 4
+addr = 0x5A70
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5A74
+hits = 341
+
+[[miss]]
+bank = 4
+addr = 0x5A75
+hits = 162
+
+[[miss]]
+bank = 4
+addr = 0x5A77
+hits = 227
+
+[[miss]]
+bank = 4
+addr = 0x5A78
+hits = 34
+
+[[miss]]
+bank = 4
+addr = 0x5A79
+hits = 78
+
+[[miss]]
+bank = 4
+addr = 0x5A88
+hits = 66
+
+[[miss]]
+bank = 4
+addr = 0x5A8F
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5A90
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5A91
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5A92
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5A94
+hits = 10
+
+[[miss]]
+bank = 4
+addr = 0x5A96
+hits = 59
+
+[[miss]]
+bank = 4
+addr = 0x5A98
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x5A9A
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5A9B
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5AA5
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x5AAB
+hits = 14
+
+[[miss]]
+bank = 4
+addr = 0x5AAC
+hits = 5
+
+[[miss]]
+bank = 4
+addr = 0x5AAD
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x5AB0
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x5AB1
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5AB2
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5AB3
+hits = 7
+
+[[miss]]
+bank = 4
+addr = 0x5AB7
+hits = 3
+
+[[miss]]
+bank = 4
+addr = 0x5AB8
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x5AB9
+hits = 4
+
+[[miss]]
+bank = 4
+addr = 0x5ABA
+hits = 6
+
+[[miss]]
+bank = 4
+addr = 0x5AC3
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F75
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F78
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F7E
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F81
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F84
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F87
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F8A
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F8D
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F99
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7F9C
+hits = 2
+
+[[miss]]
+bank = 4
+addr = 0x7F9F
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FA5
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FAE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FB4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FC0
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FC6
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FD8
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FDE
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FE1
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FE4
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FFA
+hits = 1
+
+[[miss]]
+bank = 4
+addr = 0x7FFC
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6856
+hits = 4
+
+[[miss]]
+bank = 15
+addr = 0x6857
+hits = 9
+
+[[miss]]
+bank = 15
+addr = 0x6858
+hits = 7
+
+[[miss]]
+bank = 15
+addr = 0x685B
+hits = 16
+
+[[miss]]
+bank = 15
+addr = 0x685D
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6861
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6863
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x686B
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x686C
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6871
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6872
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6879
+hits = 27
+
+[[miss]]
+bank = 15
+addr = 0x687B
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x687E
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x687F
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6885
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6886
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x688B
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x688C
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6893
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6894
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6896
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6899
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x689B
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x68A1
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x68A3
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68A6
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68AE
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x68AF
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68B0
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68B4
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x68B6
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68BC
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x68BD
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68BE
+hits = 4
+
+[[miss]]
+bank = 15
+addr = 0x68BF
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x68C1
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68C3
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x68C5
+hits = 10
+
+[[miss]]
+bank = 15
+addr = 0x68C6
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x68C8
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x68CB
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68CF
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68D0
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68D7
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x68D9
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68DD
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x68DE
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68E4
+hits = 15
+
+[[miss]]
+bank = 15
+addr = 0x68E5
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68F2
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x68F3
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68F4
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x68F8
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x68F9
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6900
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x6901
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6905
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6906
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x690D
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x690E
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6913
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6914
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x691B
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x691D
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6920
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6927
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6929
+hits = 35
+
+[[miss]]
+bank = 15
+addr = 0x692B
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x692E
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6931
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6934
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6935
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6936
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x693A
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x693F
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6941
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6942
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6947
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6948
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x694E
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x694F
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6951
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6955
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6956
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6959
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x695C
+hits = 15
+
+[[miss]]
+bank = 15
+addr = 0x695E
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6962
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6969
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x696B
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x696F
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6971
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6977
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6979
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x697E
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6981
+hits = 19
+
+[[miss]]
+bank = 15
+addr = 0x6982
+hits = 29
+
+[[miss]]
+bank = 15
+addr = 0x6984
+hits = 15
+
+[[miss]]
+bank = 15
+addr = 0x6986
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6987
+hits = 6
+
+[[miss]]
+bank = 15
+addr = 0x6988
+hits = 7
+
+[[miss]]
+bank = 15
+addr = 0x6989
+hits = 7
+
+[[miss]]
+bank = 15
+addr = 0x698B
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6992
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6993
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6994
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6999
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x699E
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69A0
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x69A1
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69A6
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x69A9
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69AD
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x69B0
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69B3
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69B4
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69BB
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x69BC
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69C1
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x69C4
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69C8
+hits = 15
+
+[[miss]]
+bank = 15
+addr = 0x69C9
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69CA
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69D0
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x69D6
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x69D7
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69D8
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69DC
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69E3
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x69E4
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x69E9
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x69EB
+hits = 4
+
+[[miss]]
+bank = 15
+addr = 0x69EE
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x69F4
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x69F5
+hits = 9
+
+[[miss]]
+bank = 15
+addr = 0x69F7
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6A45
+hits = 612
+
+[[miss]]
+bank = 15
+addr = 0x6A47
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6A49
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6AB4
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6AB6
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6AD8
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6AD9
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6ADA
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6ADB
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6ADC
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6AE2
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B02
+hits = 2
+
+[[miss]]
+bank = 15
+addr = 0x6B03
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6B09
+hits = 4
+
+[[miss]]
+bank = 15
+addr = 0x6B0B
+hits = 17
+
+[[miss]]
+bank = 15
+addr = 0x6B11
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x6B15
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B17
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B1D
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B1F
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6B25
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B2D
+hits = 27
+
+[[miss]]
+bank = 15
+addr = 0x6B2F
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B35
+hits = 13
+
+[[miss]]
+bank = 15
+addr = 0x6B39
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B3C
+hits = 26
+
+[[miss]]
+bank = 15
+addr = 0x6B40
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B42
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x6B48
+hits = 6
+
+[[miss]]
+bank = 15
+addr = 0x6B54
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6B56
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6B8B
+hits = 22
+
+[[miss]]
+bank = 15
+addr = 0x6B99
+hits = 12
+
+[[miss]]
+bank = 15
+addr = 0x6BB0
+hits = 14
+
+[[miss]]
+bank = 15
+addr = 0x6D50
+hits = 22
+
+[[miss]]
+bank = 15
+addr = 0x7163
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x71C4
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x71DC
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x72C6
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x72C9
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x72CD
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x72DB
+hits = 1
+
+[[miss]]
+bank = 15
+addr = 0x72E0
 hits = 1
 
 [[miss]]
 bank = 32
 addr = 0x6A63
-hits = 1
+hits = 4
 
 [[miss]]
 bank = 32
 addr = 0x6A70
-hits = 31
+hits = 124
+
+[[miss]]
+bank = 36
+addr = 0x7803
+hits = 3
+
+[[miss]]
+bank = 36
+addr = 0x7808
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7812
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x781A
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x781C
+hits = 24
+
+[[miss]]
+bank = 36
+addr = 0x7827
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x7829
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x782B
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x782D
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x7835
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x783A
+hits = 4
+
+[[miss]]
+bank = 36
+addr = 0x7842
+hits = 3
+
+[[miss]]
+bank = 36
+addr = 0x7845
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x784A
+hits = 5
+
+[[miss]]
+bank = 36
+addr = 0x7866
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7880
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7882
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7887
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x788B
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x788E
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x78A8
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x78AA
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x78AC
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x78AE
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x78B8
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7901
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x7904
+hits = 3
+
+[[miss]]
+bank = 36
+addr = 0x7907
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7909
+hits = 2
+
+[[miss]]
+bank = 36
+addr = 0x790D
+hits = 1
+
+[[miss]]
+bank = 36
+addr = 0x7911
+hits = 3
+
+[[miss]]
+bank = 36
+addr = 0x79BA
+hits = 1922
+
+[[miss]]
+bank = 36
+addr = 0x79BC
+hits = 1104
+
+[[miss]]
+bank = 36
+addr = 0x79BE
+hits = 1293
+
+[[miss]]
+bank = 36
+addr = 0x79BF
+hits = 1609
+
+[[miss]]
+bank = 36
+addr = 0x79C0
+hits = 1043
+
+[[miss]]
+bank = 36
+addr = 0x79C1
+hits = 501
+
+[[miss]]
+bank = 36
+addr = 0x79C2
+hits = 1593
+
+[[miss]]
+bank = 36
+addr = 0x79C4
+hits = 412
+
+[[miss]]
+bank = 36
+addr = 0x79C5
+hits = 1001
+
+[[miss]]
+bank = 36
+addr = 0x79C8
+hits = 1889
+
+[[miss]]
+bank = 36
+addr = 0x79C9
+hits = 1166
+
+[[miss]]
+bank = 36
+addr = 0x79CA
+hits = 1447
+
+[[miss]]
+bank = 36
+addr = 0x79CB
+hits = 2589
+
+[[miss]]
+bank = 36
+addr = 0x79CC
+hits = 1626
+
+[[miss]]
+bank = 36
+addr = 0x79CE
+hits = 20414
+
+[[miss]]
+bank = 36
+addr = 0x79CF
+hits = 935
+
+[[miss]]
+bank = 36
+addr = 0x79D0
+hits = 1911
+
+[[miss]]
+bank = 36
+addr = 0x79D1
+hits = 1492
+
+[[miss]]
+bank = 36
+addr = 0x79D2
+hits = 1474
+
+[[miss]]
+bank = 36
+addr = 0x79D5
+hits = 3860
+
+[[miss]]
+bank = 36
+addr = 0x79D6
+hits = 932
+
+[[miss]]
+bank = 36
+addr = 0x79D8
+hits = 1328
+
+[[miss]]
+bank = 36
+addr = 0x79DA
+hits = 799
+
+[[miss]]
+bank = 36
+addr = 0x79DC
+hits = 569
+
+[[miss]]
+bank = 36
+addr = 0x79DD
+hits = 630
+
+[[miss]]
+bank = 36
+addr = 0x79DF
+hits = 994
+
+[[miss]]
+bank = 36
+addr = 0x79E0
+hits = 354
+
+[[miss]]
+bank = 36
+addr = 0x79E1
+hits = 771
+
+[[miss]]
+bank = 36
+addr = 0x79E2
+hits = 1066
+
+[[miss]]
+bank = 36
+addr = 0x79E3
+hits = 719
+
+[[miss]]
+bank = 36
+addr = 0x79E4
+hits = 249
+
+[[miss]]
+bank = 36
+addr = 0x79E6
+hits = 1135
+
+[[miss]]
+bank = 36
+addr = 0x79E7
+hits = 287
+
+[[miss]]
+bank = 36
+addr = 0x79E8
+hits = 650
+
+[[miss]]
+bank = 36
+addr = 0x79E9
+hits = 1109
+
+[[miss]]
+bank = 36
+addr = 0x79EB
+hits = 1898
+
+[[miss]]
+bank = 36
+addr = 0x79EC
+hits = 1651
+
+[[miss]]
+bank = 36
+addr = 0x79ED
+hits = 462
+
+[[miss]]
+bank = 36
+addr = 0x79EE
+hits = 317
+
+[[miss]]
+bank = 36
+addr = 0x79EF
+hits = 311
+
+[[miss]]
+bank = 36
+addr = 0x79F0
+hits = 262
+
+[[miss]]
+bank = 36
+addr = 0x79F2
+hits = 1121
+
+[[miss]]
+bank = 36
+addr = 0x79F5
+hits = 62497
+
+[[miss]]
+bank = 36
+addr = 0x79F6
+hits = 454
+
+[[miss]]
+bank = 36
+addr = 0x79F9
+hits = 1583
+
+[[miss]]
+bank = 36
+addr = 0x79FE
+hits = 1859
+
+[[miss]]
+bank = 36
+addr = 0x7A00
+hits = 745
+
+[[miss]]
+bank = 36
+addr = 0x7A03
+hits = 1830
+
+[[miss]]
+bank = 36
+addr = 0x7A05
+hits = 1312
+
+[[miss]]
+bank = 36
+addr = 0x7A07
+hits = 804
+
+[[miss]]
+bank = 36
+addr = 0x7A09
+hits = 596
+
+[[miss]]
+bank = 36
+addr = 0x7A0A
+hits = 1606
+
+[[miss]]
+bank = 36
+addr = 0x7A0B
+hits = 675
+
+[[miss]]
+bank = 36
+addr = 0x7A0C
+hits = 451
+
+[[miss]]
+bank = 36
+addr = 0x7A0D
+hits = 1056
+
+[[miss]]
+bank = 36
+addr = 0x7A0E
+hits = 698
+
+[[miss]]
+bank = 36
+addr = 0x7A0F
+hits = 875
+
+[[miss]]
+bank = 36
+addr = 0x7A10
+hits = 817
+
+[[miss]]
+bank = 36
+addr = 0x7A11
+hits = 340
+
+[[miss]]
+bank = 36
+addr = 0x7A12
+hits = 908
+
+[[miss]]
+bank = 36
+addr = 0x7A16
+hits = 1086
+
+[[miss]]
+bank = 36
+addr = 0x7A17
+hits = 1159
+
+[[miss]]
+bank = 36
+addr = 0x7A18
+hits = 719
+
+[[miss]]
+bank = 36
+addr = 0x7A1A
+hits = 1381
+
+[[miss]]
+bank = 36
+addr = 0x7A1C
+hits = 663
+
+[[miss]]
+bank = 36
+addr = 0x7A1E
+hits = 891
+
+[[miss]]
+bank = 36
+addr = 0x7A21
+hits = 667
+
+[[miss]]
+bank = 36
+addr = 0x7A22
+hits = 453
+
+[[miss]]
+bank = 36
+addr = 0x7A23
+hits = 1078
+
+[[miss]]
+bank = 36
+addr = 0x7A24
+hits = 722
+
+[[miss]]
+bank = 36
+addr = 0x7A25
+hits = 863
+
+[[miss]]
+bank = 36
+addr = 0x7A26
+hits = 813
+
+[[miss]]
+bank = 36
+addr = 0x7A27
+hits = 343
+
+[[miss]]
+bank = 36
+addr = 0x7A28
+hits = 904
+
+[[miss]]
+bank = 36
+addr = 0x7A29
+hits = 948
+
+[[miss]]
+bank = 36
+addr = 0x7A2C
+hits = 1090
+
+[[miss]]
+bank = 36
+addr = 0x7A2E
+hits = 1893
+
+[[miss]]
+bank = 36
+addr = 0x7A2F
+hits = 1395
+
+[[miss]]
+bank = 36
+addr = 0x7A30
+hits = 894
+
+[[miss]]
+bank = 36
+addr = 0x7A32
+hits = 1123
+
+[[miss]]
+bank = 36
+addr = 0x7A35
+hits = 1624
+
+[[miss]]
+bank = 36
+addr = 0x7A3D
+hits = 22
+
+[[miss]]
+bank = 36
+addr = 0x7A59
+hits = 22
+
+[[miss]]
+bank = 36
+addr = 0x7B43
+hits = 246
+
+[[miss]]
+bank = 38
+addr = 0x6B00
+hits = 78217
+
+[[miss]]
+bank = 41
+addr = 0x6444
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6449
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6450
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6451
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6457
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6461
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x64BB
+hits = 14
+
+[[miss]]
+bank = 41
+addr = 0x64BC
+hits = 15
+
+[[miss]]
+bank = 41
+addr = 0x64BD
+hits = 10
+
+[[miss]]
+bank = 41
+addr = 0x64BE
+hits = 13
+
+[[miss]]
+bank = 41
+addr = 0x64C1
+hits = 18
+
+[[miss]]
+bank = 41
+addr = 0x64C2
+hits = 16
+
+[[miss]]
+bank = 41
+addr = 0x64C4
+hits = 14
+
+[[miss]]
+bank = 41
+addr = 0x64C6
+hits = 10
+
+[[miss]]
+bank = 41
+addr = 0x64C8
+hits = 18
+
+[[miss]]
+bank = 41
+addr = 0x64CB
+hits = 39
+
+[[miss]]
+bank = 41
+addr = 0x64CC
+hits = 20
+
+[[miss]]
+bank = 41
+addr = 0x64CD
+hits = 36
+
+[[miss]]
+bank = 41
+addr = 0x64CF
+hits = 9
+
+[[miss]]
+bank = 41
+addr = 0x64D2
+hits = 47
+
+[[miss]]
+bank = 41
+addr = 0x64D5
+hits = 22
+
+[[miss]]
+bank = 41
+addr = 0x64D7
+hits = 42
+
+[[miss]]
+bank = 41
+addr = 0x64D9
+hits = 24
+
+[[miss]]
+bank = 41
+addr = 0x64DB
+hits = 32
+
+[[miss]]
+bank = 41
+addr = 0x64DD
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x64DE
+hits = 18
+
+[[miss]]
+bank = 41
+addr = 0x64DF
+hits = 24
+
+[[miss]]
+bank = 41
+addr = 0x64E2
+hits = 25
+
+[[miss]]
+bank = 41
+addr = 0x64E4
+hits = 51
+
+[[miss]]
+bank = 41
+addr = 0x64E5
+hits = 20
+
+[[miss]]
+bank = 41
+addr = 0x64E6
+hits = 23
+
+[[miss]]
+bank = 41
+addr = 0x64E7
+hits = 14
+
+[[miss]]
+bank = 41
+addr = 0x64E8
+hits = 7
+
+[[miss]]
+bank = 41
+addr = 0x64EB
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x64EC
+hits = 10
+
+[[miss]]
+bank = 41
+addr = 0x64EE
+hits = 24
+
+[[miss]]
+bank = 41
+addr = 0x64EF
+hits = 14
+
+[[miss]]
+bank = 41
+addr = 0x64F0
+hits = 4
+
+[[miss]]
+bank = 41
+addr = 0x64F1
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x64F3
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x64F7
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x64F8
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x64FD
+hits = 4
+
+[[miss]]
+bank = 41
+addr = 0x64FE
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x64FF
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6502
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x6505
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x6507
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x6508
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x6509
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x650B
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x650E
+hits = 7
+
+[[miss]]
+bank = 41
+addr = 0x6511
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x6513
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6515
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6517
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x6519
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x651A
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x651B
+hits = 4
+
+[[miss]]
+bank = 41
+addr = 0x651C
+hits = 8
+
+[[miss]]
+bank = 41
+addr = 0x651F
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6521
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x652D
+hits = 94
+
+[[miss]]
+bank = 41
+addr = 0x652E
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x6531
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6533
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x6534
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6535
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x6536
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x6537
+hits = 42
+
+[[miss]]
+bank = 41
+addr = 0x6538
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6539
+hits = 2
+
+[[miss]]
+bank = 41
+addr = 0x653B
+hits = 4
+
+[[miss]]
+bank = 41
+addr = 0x653D
+hits = 5
+
+[[miss]]
+bank = 41
+addr = 0x653E
+hits = 53
+
+[[miss]]
+bank = 41
+addr = 0x653F
+hits = 3
+
+[[miss]]
+bank = 41
+addr = 0x6541
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x67E9
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x6853
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x685C
+hits = 6
+
+[[miss]]
+bank = 41
+addr = 0x6865
+hits = 19
+
+[[miss]]
+bank = 41
+addr = 0x6868
+hits = 1
+
+[[miss]]
+bank = 41
+addr = 0x686B
+hits = 19
+
+[[miss]]
+bank = 41
+addr = 0x686E
+hits = 43
+
+[[miss]]
+bank = 41
+addr = 0x6871
+hits = 14
+
+[[miss]]
+bank = 41
+addr = 0x6874
+hits = 43
+
+[[miss]]
+bank = 44
+addr = 0x5D62
+hits = 103971
 

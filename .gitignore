@@ -1,10 +1,11 @@
 # build + recompiler output (regenerated locally from the ROM via gbrecomp)
 generated/
+generated_dx/
 generated_pre_launcher/
 build/
 logs/
 *.ppm
-# ROMs (copyrighted — users supply their own)
+# ROMs (copyrighted â€” users supply their own)
 roms/
 *.gb
 *.gbc
@@ -24,6 +25,5 @@ logs_*.log
 # python probe bytecode
 __pycache__/
 *.pyc
-generated_dx/
 _symtest_*/
 _symtest_*.toml

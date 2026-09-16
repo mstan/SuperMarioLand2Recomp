@@ -4,7 +4,8 @@
 # actually recompiled here is V1.0 + recomp/patches/sml2dx_v181.bps (CRC32
 # F0799017, 1 MiB, CGB-only, MBC5). The recompiler applies that BPS at
 # generation time, and the generated body applies the SAME BPS in memory at
-# boot to the user's V1.0 ROM — so the hack is never shipped and never asked for.
+# boot to the user's V1.0 ROM — so the hack is never shipped and never asked
+# for, and the launcher's CRC gate only ever accepts D5EC24E4.
 #
 # Used with: gbrecomp --config super_mario_land_2_dx.toml
 
@@ -14,11 +15,15 @@ patch_file = "recomp/patches/sml2dx_v181.bps"
 output_dir = "generated_dx"
 runtime_dir = "../gb-recompiled/runtime"
 output_prefix = "Super_Mario_Land_2_DX"
-# The faithful body's seed manifest is harvested from V1.0 addresses; the DX
-# image relocates code, so this body keeps its own.
-dispatch_manifest = "dispatch_misses_dx.toml"
+# No `symbols`: recomp/sml2_v10.sym describes the unpatched V1.0 layout, and the
+# hack relocates code (the actor draw routine alone moves from bank 3 to a
+# dynamic {35,40,58}). Applying it here would name the wrong addresses.
 
 [options]
+# This body has its own dispatch-miss manifest. Without it, load_config()
+# auto-ingests the sibling dispatch_misses.toml, which belongs to the faithful
+# V1.0 body — different code layout, so its seeds are wrong addresses here.
+dispatch_misses = "dispatch_misses_dx.toml"
 aggressive_scan = true
 emit_comments = true
 # Library body: no main(), no CMake project, every global namespaced behind

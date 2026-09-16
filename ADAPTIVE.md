@@ -132,6 +132,53 @@ Pause deliberately falls back to native even though its frame is otherwise
 identical to gameplay; that is a policy choice, not a limitation (one constant,
 `SML2_MODE_PLAY`, in `sml2_adaptive.c`).
 
+## The fallback is debounced
+
+The gate is a proof obligation, not a presentation decision. It can go false for
+a single frame because the guest was midway through a VBlank update, or because
+a demo segment is changing scene -- and dropping to a pillarboxed 160 for that
+one frame looks far worse than showing the previous frame's margins.
+
+So the gate result is debounced: **6 consecutive rejections** (~100 ms at 60 Hz)
+before the view narrows, and an **instant** return to wide on the first frame
+that passes. Inside the debounce window the margins are composed from the last
+frame that PASSED, frozen whole, while the native 160 columns keep coming from
+the live PPU as always. A state load drops the frozen frame rather than compose
+a new world with an old one's margins.
+
+The same code path serves both bodies. `sml2_view` reports `wide` (the
+presentation decision), `valid` (the raw gate), `fail_run`, `debounce`,
+`debounced`, `narrowed`, `narrowed_model` and `pillarbox_model`; the last is the
+flicker number -- a frame that was wide and snapped to pillarbox because the
+level model failed -- and it is 0.
+
+## Why a gate rejection happened
+
+Every rejection is reason-coded and lands in an always-on ring, in every build.
+"The view flickered" is a handful of frames scattered through a ten-thousand
+frame run, so arming a trace after seeing it is exactly how you miss it: the
+rings fill from boot and the probe reads them backwards.
+
+| Reason | Meaning |
+|---|---|
+| `mode` | `$FF9B` is not scrolling gameplay or death |
+| `bonus` | `$A28B & 0xF0`: bonus/minigame engine |
+| `transition` | `$A20E`: pipe/door room change in flight |
+| `lcdc` / `window` / `camera` | LCDC, WY/WX or the camera are not in their gameplay state |
+| `rambank` | cart SRAM is not the bank the level lives in |
+| `negcoord` | the visible grid reaches negative world coordinates |
+| `blockid` | a block id > `$7F`: level RAM is not holding a level |
+| `tile` | block-map decode vs. the hardware tilemap below 95% |
+| `attr` | a margin cell would be painted a different colour than the hardware paints it |
+| `notable` | CGB body with no DX attribute table loaded |
+
+`sml2_gate_log` returns the ring: per event the frame, the reason, the live
+ROM/SRAM/WRAM banks and `LY`, the scores, the tileset, and the first four
+offending cells with block id, both tile indices and both attribute bytes.
+`sml2_flip_log` returns every wide/native transition with the reason that
+caused it. `sml2_score_map` prints the per-cell outcome of the last scored
+frame.
+
 ## Verified ROM bindings
 
 Read taps and overrides preserve the ROM's control flow and cycle accounting;
@@ -247,6 +294,7 @@ python tools/probe_adaptive.py
 python tools/probe_fit.py
 python tools/probe_mods.py
 python tools/probe_dx_widescreen.py   # both bodies at 32:9, colour gate + captures
+python tools/probe_dx_flicker.py      # attract demo + play, 16k frames, no flicker
 ```
 
 Each probe copies the executable into its own directory under `logs/` with its

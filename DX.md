@@ -225,6 +225,62 @@ back to bank 0. Inert on the faithful body, which has one bank.
   next scroll redraws it. The 95% tile gate already covers it, which is why the
   colour gate scores only the cells whose tile matched.
 
+### Two things that made the DX view flicker
+
+Both were found in the **attract demo**, which the Level-1 validation route
+never reaches: it cycles several demo levels on tilesets 14, 17 and 20, at
+camera positions Mushroom Zone level 1 never visits.
+
+**1. The host read the block map through the guest's live SVBK.** The level's
+`$D000`-`$DFFF` half -- block rows 32..47 -- is WRAM bank 1. The DX attribute
+drain parks SVBK on **2** while it writes (`24:79FE` sets it, `24:7A32`
+restores it) and can still be running when the host takes its per-frame
+snapshot at PPU line 0, so those rows came back as the `$D000` attribute table
+instead of the level. Any level whose camera sits below block row 32 decoded to
+noise on exactly those frames. Mushroom Zone level 1 sits at row 28 and never
+hit it; the faithful body never writes SVBK at all, which is why only DX
+flickered.
+
+Measured before the fix, over a 16k-frame attract run: **1213 of 1214** tile-gate
+rejections and **226 of 226** block-id rejections had `wram_bank == 2`, every one
+of them with the visible grid inside the `$D000` half. `ram_bank` was 0 on every
+frame, so cart SRAM was never the problem. Fixed by reading the block map with
+the bank the level lives in (`SML2_LEVEL_WRAM_BANK`), never the live one, and by
+refusing the frame outright if cart SRAM is not on its expected bank.
+
+**2. The colour gate compared attribute bytes when the claim is about colour.**
+The demo levels leave whole regions of the blank tile `$FF` carrying attribute
+1 where the hack's table says 0. Tile `$FF` is all zeroes in VRAM bank 0, so
+every pixel is colour 0 -- and colour 0 is identical (`FFFFFF`) in palettes 0
+and 1. Not one pixel differed, yet the byte comparison rejected the frame, and
+because the condition is a property of the map rather than of timing it held for
+**sixty consecutive frames at a time**: the sustained drop-out, not the flicker.
+
+The gate now asks the question it means: would the derived attribute paint this
+cell exactly as the hardware's attribute does? The byte compare stays as the
+fast path; only a differing cell is rendered both ways, 64 pixels, a handful of
+times per frame at most. The bit-7 exemption then falls out instead of being
+asserted -- BG-over-OBJ priority selects no BG colour, so it can never change
+the answer. `sml2_view` reports `attr_byte_diff`, the running count of cells
+whose attribute byte differed but whose pixels did not: **26690** over that run.
+
+### Flicker, measured
+
+16000 frames per phase, 32:9, both bodies, attract demo (no input) and the
+Level-1 route:
+
+| | before | after |
+|---|---|---|
+| wide <-> native transitions, attract DX | 1546 | **10** |
+| ...caused by a model failure | most of them | **0** |
+| `blockid` rejections | 226 | **0** |
+| `attr` rejections | 2492 | **0** |
+| `tile` rejections | 1214 | **1** (first frame of a demo segment, before VRAM is filled) |
+| frames pillarboxed from a wide view by a model failure | many | **0** |
+
+The 10 remaining transitions are the demo entering and leaving gameplay: 5
+recoveries, 4 `mode`, 1 `transition`.
+
 ### Bindings, V1.0 vs DX
 
 The one binding the hack moved is the actor draw routine:

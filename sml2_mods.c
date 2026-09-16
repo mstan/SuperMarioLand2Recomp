@@ -1,0 +1,299 @@
+/* Built-in feature provider for the shared recomp-ui pre-boot launcher.
+ *
+ * Structured as a table of packages rather than a hard-coded index 0, so a
+ * second package (a future "DX color" mod) is a row here plus its own option
+ * block -- no change to the provider plumbing.
+ */
+#include "sml2_mods.h"
+#include "recomp_launcher.h"
+#include <SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#define COPY(field, text) snprintf(field, sizeof(field), "%s", text)
+#define AUTHOR "Super Mario Land 2 Recomp contributors"
+#define CONFIG_NAME "sml2-mods.ini"
+#define ENV_WIDESCREEN "SML2_WIDESCREEN"
+
+enum { PKG_WIDESCREEN = 0, PKG_COUNT };
+
+typedef struct {
+    const char *package_id;
+    const char *feature_id;
+    const char *name;
+    const char *group;
+    const char *package_description;
+    const char *feature_description;
+    int option_count;
+} Sml2Package;
+
+static const Sml2Package packages[PKG_COUNT] = {
+    [PKG_WIDESCREEN] = {
+        "sml2-adaptive-widescreen", "adaptive-widescreen", "Adaptive widescreen",
+        "Presentation",
+        "Render Super Mario Land 2's world across the whole window instead of the "
+        "Game Boy's 160x144 crop.",
+        "Composes a wider view from the level's own block map, widens enemy "
+        "activation to match, clamps to the level's scroll boxes and anchors the "
+        "status bar to the window edges. The emulated hardware stays native.",
+        1,
+    },
+};
+
+static const char *const aspects[] = { "Fit", "16:9", "21:9", "32:9" };
+static const int widths[] = { -1, 256, 336, 512 };
+#define ASPECT_COUNT ((int)(sizeof aspects / sizeof *aspects))
+
+static SML2ModSettings settings;
+static int loaded;
+static char config_path[1024], error[160];
+
+static int valid_width(int width) { return width == -1 || (width >= 160 && width <= 4096); }
+
+static void load(const char *base) {
+    if (loaded) return;
+    loaded = 1;
+    settings = (SML2ModSettings){ 0, -1 };
+    snprintf(config_path, sizeof(config_path), "%s%s" CONFIG_NAME, base ? base : "",
+             base && base[0] && base[strlen(base) - 1] != '/' && base[strlen(base) - 1] != '\\'
+                 ? "/" : "");
+    FILE *f = fopen(config_path, "r");
+    if (f) {
+        char line[256], key[64];
+        int value;
+        while (fgets(line, sizeof(line), f)) {
+            if (sscanf(line, " %63[^= \t] = %d", key, &value) != 2) continue;
+            if (!strcmp(key, "AdaptiveWidescreen") && (value == 0 || value == 1))
+                settings.widescreen = value;
+            if (!strcmp(key, "Width") && valid_width(value)) settings.width = value;
+        }
+        fclose(f);
+    }
+    /* An explicit CLI/test preset seeds the controls. The launcher checkbox stays
+     * authoritative: load() runs once, so game init never overwrites a staged
+     * selection the user made in the Mods page. */
+    const char *aspect = getenv(ENV_WIDESCREEN);
+    if (aspect && aspect[0]) {
+        if (!strcmp(aspect, "off") || !strcmp(aspect, "Off")) {
+            settings.widescreen = 0;
+        } else {
+            int width = 0;
+            if (!strcmp(aspect, "fit") || !strcmp(aspect, "Fit")) width = -1;
+            for (int i = 1; i < ASPECT_COUNT; i++)
+                if (!strcmp(aspect, aspects[i])) width = widths[i];
+            if (!width) width = atoi(aspect);
+            if (valid_width(width)) {
+                settings.width = width;
+                settings.widescreen = 1;
+            }
+        }
+    }
+}
+
+const SML2ModSettings *sml2_mod_settings(void) {
+    if (!loaded) {
+        char *base = SDL_GetBasePath();
+        load(base);
+        SDL_free(base);
+    }
+    return &settings;
+}
+
+static int package_index(const char *package_id) {
+    if (!package_id) return -1;
+    for (int i = 0; i < PKG_COUNT; i++)
+        if (!strcmp(package_id, packages[i].package_id)) return i;
+    return -1;
+}
+
+static int feature_index(const char *package_id, const char *feature_id) {
+    int i = package_index(package_id);
+    if (i < 0 || !feature_id || strcmp(feature_id, packages[i].feature_id)) return -1;
+    return i;
+}
+
+static int package_enabled(int i) {
+    switch (i) {
+        case PKG_WIDESCREEN: return settings.widescreen;
+        default: return 0;
+    }
+}
+
+static void package_set_enabled(int i, int enabled) {
+    switch (i) {
+        case PKG_WIDESCREEN: settings.widescreen = enabled != 0; break;
+        default: break;
+    }
+}
+
+static int count(void *ctx) { (void)ctx; return PKG_COUNT; }
+
+static int package_get(void *ctx, int index, RecompLauncherCModPackage *out) {
+    (void)ctx;
+    if (!out || index < 0 || index >= PKG_COUNT) return 0;
+    const Sml2Package *p = &packages[index];
+    memset(out, 0, sizeof(*out));
+    COPY(out->id, p->package_id);
+    COPY(out->name, p->name);
+    COPY(out->version, "1");
+    COPY(out->author, AUTHOR);
+    COPY(out->description, p->package_description);
+    out->enabled = package_enabled(index);
+    out->option_count = p->option_count;
+    return 1;
+}
+
+static int feature_get(void *ctx, int index, RecompLauncherCModFeature *out) {
+    (void)ctx;
+    if (!out || index < 0 || index >= PKG_COUNT) return 0;
+    const Sml2Package *p = &packages[index];
+    memset(out, 0, sizeof(*out));
+    COPY(out->id, p->feature_id);
+    COPY(out->package_id, p->package_id);
+    COPY(out->package_name, p->name);
+    COPY(out->package_version, "1");
+    COPY(out->name, p->name);
+    COPY(out->group, p->group);
+    COPY(out->author, AUTHOR);
+    COPY(out->description, p->feature_description);
+    COPY(out->status, package_enabled(index) ? "Enabled" : "Disabled");
+    out->enabled = package_enabled(index);
+    out->option_count = p->option_count;
+    return 1;
+}
+
+static int option_get(void *ctx, const char *package_id, const char *feature_id, int index,
+                      RecompLauncherCModOption *out) {
+    (void)ctx;
+    int pkg = feature_index(package_id, feature_id);
+    if (!out || pkg < 0 || index < 0 || index >= packages[pkg].option_count) return 0;
+    memset(out, 0, sizeof(*out));
+    out->step = 1;
+    if (pkg == PKG_WIDESCREEN && index == 0) {
+        out->type = RECOMP_MOD_OPTION_CHOICE;
+        out->choice_count = ASPECT_COUNT;
+        COPY(out->id, "aspect");
+        COPY(out->label, "Aspect ratio");
+        COPY(out->description, "Fit follows the window, including 32:9 and wider.");
+        COPY(out->value, "Fit");
+        COPY(out->default_value, "Fit");
+        for (int i = 0; i < ASPECT_COUNT; i++)
+            if (settings.width == widths[i]) COPY(out->value, aspects[i]);
+        return 1;
+    }
+    return 0;
+}
+
+static int choice_get(void *ctx, const char *package_id, const char *feature_id,
+                      const char *option, int index, RecompLauncherCModChoice *out) {
+    (void)ctx;
+    int pkg = feature_index(package_id, feature_id);
+    if (!out || pkg != PKG_WIDESCREEN || !option || strcmp(option, "aspect")) return 0;
+    if (index < 0 || index >= ASPECT_COUNT) return 0;
+    memset(out, 0, sizeof(*out));
+    COPY(out->value, aspects[index]);
+    COPY(out->label, index ? aspects[index] : "Fit to window");
+    return 1;
+}
+
+static int enable(void *ctx, const char *package_id, const char *feature_id, int enabled) {
+    (void)ctx;
+    int pkg = feature_index(package_id, feature_id);
+    if (pkg < 0) return 0;
+    package_set_enabled(pkg, enabled);
+    return 1;
+}
+
+static int set_option(void *ctx, const char *package_id, const char *feature_id,
+                      const char *option, const char *value) {
+    (void)ctx;
+    int pkg = feature_index(package_id, feature_id);
+    if (pkg < 0 || !option || !value) return 0;
+    if (pkg == PKG_WIDESCREEN && !strcmp(option, "aspect")) {
+        for (int i = 0; i < ASPECT_COUNT; i++)
+            if (!strcmp(value, aspects[i])) {
+                settings.width = widths[i];
+                return 1;
+            }
+    }
+    return 0;
+}
+
+/* Package-oriented (legacy) surface: the launcher may use either. */
+static int package_option_get(void *ctx, const char *package_id, int index,
+                              RecompLauncherCModOption *out) {
+    int pkg = package_index(package_id);
+    if (pkg < 0) return 0;
+    return option_get(ctx, package_id, packages[pkg].feature_id, index, out);
+}
+
+static int package_choice_get(void *ctx, const char *package_id, const char *option,
+                              int index, RecompLauncherCModChoice *out) {
+    int pkg = package_index(package_id);
+    if (pkg < 0) return 0;
+    return choice_get(ctx, package_id, packages[pkg].feature_id, option, index, out);
+}
+
+static int package_set_enabled_cb(void *ctx, const char *package_id, int enabled) {
+    int pkg = package_index(package_id);
+    if (pkg < 0) return 0;
+    return enable(ctx, package_id, packages[pkg].feature_id, enabled);
+}
+
+static int package_set_option(void *ctx, const char *package_id, const char *option,
+                              const char *value) {
+    int pkg = package_index(package_id);
+    if (pkg < 0) return 0;
+    return set_option(ctx, package_id, packages[pkg].feature_id, option, value);
+}
+
+static int commit(void *ctx, const char *image) {
+    (void)ctx;
+    (void)image;
+    error[0] = 0;
+    char temporary[1050];
+    snprintf(temporary, sizeof(temporary), "%s.tmp", config_path);
+    FILE *f = fopen(temporary, "w");
+    int ok = f && fprintf(f, "[Mods]\nAdaptiveWidescreen=%d\nWidth=%d\n",
+                          settings.widescreen, settings.width) > 0;
+    if (f && fclose(f) != 0) ok = 0;
+    if (ok) {
+#ifdef _WIN32
+        ok = MoveFileExA(temporary, config_path,
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+        ok = rename(temporary, config_path) == 0;
+#endif
+    }
+    if (!ok) COPY(error, "Unable to save " CONFIG_NAME);
+    return ok;
+}
+
+static const char *last_error(void *ctx) { (void)ctx; return error; }
+
+const RecompLauncherCModProvider *sml2_mod_provider(const char *exe_dir) {
+    static RecompLauncherCModProvider provider;
+    load(exe_dir);
+    memset(&provider, 0, sizeof(provider));
+    provider.package_count = count;
+    provider.package_get = package_get;
+    provider.option_get = package_option_get;
+    provider.choice_get = package_choice_get;
+    provider.set_enabled = package_set_enabled_cb;
+    provider.set_option = package_set_option;
+    provider.feature_count = count;
+    provider.feature_get = feature_get;
+    provider.feature_option_get = option_get;
+    provider.feature_choice_get = choice_get;
+    provider.feature_enable = enable;
+    provider.feature_set_option = set_option;
+    provider.commit = commit;
+    provider.last_error = last_error;
+    provider.archive_extension = ".gbmod";
+    provider.archive_description = "Game Boy mod package (.gbmod)";
+    return &provider;
+}

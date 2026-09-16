@@ -20,3 +20,7 @@ keybinds.ini
 *.log
 logs_*.log
 *.tmp
+
+# python probe bytecode
+__pycache__/
+*.pyc

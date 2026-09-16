@@ -1,0 +1,6 @@
+target_sources(${GBRECOMP_GAME_TARGET} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/sml2_adaptive.c")
+target_sources(${GBRECOMP_GAME_TARGET} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/sml2_mods.c")
+target_include_directories(${GBRECOMP_GAME_TARGET} PRIVATE "${RECOMP_UI_ROOT}/src")
+if(GBRECOMP_RECOMP_UI AND NOT RECOMP_UI_ENABLE_MODS)
+    message(FATAL_ERROR "Super Mario Land 2 requires its Mods UI: configure with -DRECOMP_UI_ENABLE_MODS=ON")
+endif()

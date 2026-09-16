@@ -643,8 +643,7 @@ void sml2_adaptive_init(GBContext *ctx) {
         /* The body that actually booted cannot be composed wide. Stay at the
          * native 160 rather than synthesise margins that would not match it;
          * the Mods page already said so (sml2_adaptive_margin_note). */
-        fprintf(stderr, "[ADAPTIVE] %s
-", bindings()->margin_note);
+        fprintf(stderr, "[ADAPTIVE] %s\n", bindings()->margin_note);
         return;
     }
     gb_custom_requested_width = mods->width;
@@ -668,9 +667,15 @@ static int json_int(const char *json, const char *key, int fallback) {
 
 int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
     if (!strcmp(cmd, "sml2_mod_state")) {
-        gb_debug_server_send_fmt("{\"id\":%d,\"enabled\":%d,\"width\":%d,\"requested\":%d}",
-                                 id, gb_custom_render != NULL, gb_custom_width,
-                                 gb_custom_requested_width);
+        const SML2ModSettings *m = sml2_mod_settings();
+        const char *body = gb_body_active_id();
+        const char *note = sml2_adaptive_margin_note(NULL);
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"enabled\":%d,\"width\":%d,\"requested\":%d,"
+            "\"dx\":%d,\"dx_available\":%d,\"body\":\"%s\",\"margins\":%d}",
+            id, gb_custom_render != NULL, gb_custom_width,
+            gb_custom_requested_width,
+            m->dx, sml2_dx_patch_available(), body ? body : "", note == 0);
         return 1;
     }
     if (!strcmp(cmd, "sml2_width")) {

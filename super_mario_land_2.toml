@@ -13,6 +13,11 @@ output_dir = "generated"
 runtime_dir = "../gb-recompiled/runtime"
 valid_crcs = [0xD5EC24E4]
 output_prefix = "Super_Mario_Land_2"
+# froggestspirit/marioland2, ingested by tools/ingest_disasm.py. Validated
+# against V1.0 on the headless Level-1 route: fallback sites 53 -> 52 (a strict
+# subset, no new sites), identical camera travel and mode. NOT shared with the
+# DX body -- the hack relocates code, so its symbols would be wrong.
+symbols = "recomp/sml2_v10.sym"
 
 [options]
 aggressive_scan = true

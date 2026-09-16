@@ -45,3 +45,12 @@ generated/build/Super_Mario_Land_2.exe
 
 Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 `.\Launch.ps1 -Faithful` to seed the toggle.
+
+## Running / packaging
+
+The build stages the mingw-w64 runtime DLLs (`SDL2.dll`, `libEGL.dll`, `libGLESv2.dll`,
+`zlib1.dll`, `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`) and the
+launcher `assets/` next to `generated/build/Super_Mario_Land_2.exe`, so it runs from a
+bare double-click. Without them a PATH that lists another toolchain first (devkitPro)
+fails with *entry point not found*. Ship the exe with those DLLs, `assets/` and
+`sml2dx_v181.bps`.

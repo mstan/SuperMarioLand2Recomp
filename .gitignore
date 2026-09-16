@@ -1,10 +1,11 @@
-# build + recompiler output (regenerated locally from the ROM via gbrecomp)
+﻿# build + recompiler output (regenerated locally from the ROM via gbrecomp)
 generated/
+generated_dx/
 generated_pre_launcher/
 build/
 logs/
 *.ppm
-# ROMs (copyrighted — users supply their own)
+# ROMs (copyrighted â€” users supply their own)
 roms/
 *.gb
 *.gbc

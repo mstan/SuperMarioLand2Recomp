@@ -1,0 +1,16 @@
+# Super Mario Land 2 DX v1.8.1 (toruzz) = v1.0 (UE) + SML2DXv181.ips — GBC body for the DX mod
+
+[rom]
+path = "roms/Super Mario Land 2 DX v1.8.1.gbc"
+output_dir = "generated_dx"
+runtime_dir = "../gb-recompiled/runtime"
+valid_crcs = [0xF0799017]
+output_prefix = "Super_Mario_Land_2_DX"
+
+[options]
+# This body has its own dispatch-miss manifest. Without it, load_config()
+# auto-ingests the sibling dispatch_misses.toml, which belongs to the V1.2
+# faithful body — different ROM, so its seeds are wrong addresses here.
+dispatch_misses = "dispatch_misses_dx.toml"
+aggressive_scan = true
+emit_comments = true

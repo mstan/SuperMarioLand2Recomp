@@ -57,7 +57,9 @@ def main():
             assert state["width"] == expected, (state, expected)
             if state["width"] > 160:
                 assert state["valid"] == 1, state
-                assert state["score"][0] == state["score"][1] == 378, state
+                # 21 x 17: the 18th BG row is behind the status-bar window and
+                # is not scored (sml2_adaptive.c validate_scene).
+                assert state["score"][0] == state["score"][1] == 357, state
             results.append(dict(client=[client.right, client.bottom], **state))
     finally:
         p.close()

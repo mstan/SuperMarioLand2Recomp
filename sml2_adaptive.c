@@ -992,13 +992,7 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
      * frames; a spawn may not be, because the scanner consumes what it passes.
      * So this override alone additionally requires s.valid, and every read it
      * declines is counted rather than passed over in silence. */
-    if (s.spawn_extend && !s.valid &&
-        address >= SML2_SPAWN_UPPER_HI && address <= SML2_SPAWN_LOWER_LO &&
-        ctx->rom_bank == 2) {
-        s.spawn_ungated++;
-        return value;
-    }
-    if (s.spawn_extend && s.valid && ctx->rom_bank == 2 &&
+    if (s.spawn_extend && ctx->rom_bank == 2 &&
         address >= SML2_SPAWN_UPPER_HI && address <= SML2_SPAWN_LOWER_LO) {
         int side = address <= SML2_SPAWN_UPPER_LO ? SML2_SIDE_RIGHT : SML2_SIDE_LEFT;
         int high = address == SML2_SPAWN_UPPER_HI || address == SML2_SPAWN_LOWER_HI;
@@ -1007,6 +1001,13 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
         /* ld a,[nn] is three bytes; the generated code reports the NEXT
          * instruction, the interpreter reports the instruction itself. */
         if (pc != site && pc != site + 3) return value;
+        if (!s.valid) {
+            /* The builder's own read, on a frame the gate did not prove: hand
+             * back the guest's byte and count it, so "how often did the gate
+             * cost us the widened window" is a query, not a guess. */
+            s.spawn_ungated++;
+            return value;
+        }
         if (high) {
             s.scan_hi[side]++;
             return (uint8_t)(spawn_edge(side) >> 8);

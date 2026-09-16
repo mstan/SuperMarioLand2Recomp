@@ -1654,35 +1654,46 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
          * what the scanner has done with it so far, plus the tail of the
          * always-on ring of entries the cursor stepped over without spawning.
          * No arming and no stepping: every frame since boot is already in it. */
-        char recs[6144];
-        int n = 0, count = 0;
+        /* snprintf returns the length it WOULD have written, so neither of
+         * these loops may add it to the cursor unchecked -- past the end of a
+         * long spawn list that is exactly how the cursor walks off the buffer
+         * and the JSON comes back truncated mid-token. Both append through
+         * emit(), which stops on the first entry that does not fit and says so
+         * in the payload rather than silently dropping it. */
+        static char recs[8192], ring[5120];
+        int n = 0, count = 0, recs_full = 0;
         recs[n++] = '[';
         for (unsigned off = SML2_SPAWN_RECORD;
-             off + SML2_SPAWN_RECORD <= SML2_SPAWN_LIST_SIZE && count < 160;
+             off + SML2_SPAWN_RECORD <= SML2_SPAWN_LIST_SIZE;
              off += SML2_SPAWN_RECORD) {
             if (s.spawn_list[off] == 0xFFu) break;
-            n += snprintf(recs + n, sizeof recs - (size_t)n,
-                          "%s{\"a\":%u,\"x\":%u,\"f\":%u,\"seen\":%u}",
-                          count ? "," : "", SML2_SPAWN_LIST + off,
-                          (unsigned)((s.spawn_list[off] << 8) | s.spawn_list[off + 1]),
-                          s.spawn_list[off + 2],
-                          s.spawn_seen[off / SML2_SPAWN_RECORD]);
+            int room = (int)sizeof recs - n - 2;        /* keep ']' and NUL */
+            int k = snprintf(recs + n, (size_t)(room > 0 ? room : 0),
+                             "%s{\"a\":%u,\"x\":%u,\"f\":%u,\"seen\":%u}",
+                             count ? "," : "", SML2_SPAWN_LIST + off,
+                             (unsigned)((s.spawn_list[off] << 8) | s.spawn_list[off + 1]),
+                             s.spawn_list[off + 2],
+                             s.spawn_seen[off / SML2_SPAWN_RECORD]);
+            if (k < 0 || k >= room) { recs[n] = '\0'; recs_full = 1; break; }
+            n += k;
             count++;
         }
         recs[n++] = ']';
         recs[n] = '\0';
-        char ring[3072];
-        int r = 0, shown = 0;
+        int r = 0, shown = 0, ring_full = 0;
         unsigned total = s.spawn_ring_n;
         unsigned first = total > SML2_SPAWN_RING ? total - SML2_SPAWN_RING : 0;
         ring[r++] = '[';
         for (unsigned i = first; i < total; i++) {
             unsigned slot = i % SML2_SPAWN_RING;
-            r += snprintf(ring + r, sizeof ring - (size_t)r,
-                          "%s{\"frame\":%d,\"cam_x\":%d,\"edge\":%d,\"x\":%d,\"a\":%d}",
-                          shown ? "," : "", s.spawn_ring[slot].frame,
-                          s.spawn_ring[slot].cam_x, s.spawn_ring[slot].edge,
-                          s.spawn_ring[slot].x, s.spawn_ring[slot].addr);
+            int room = (int)sizeof ring - r - 2;
+            int k = snprintf(ring + r, (size_t)(room > 0 ? room : 0),
+                             "%s{\"frame\":%d,\"cam_x\":%d,\"edge\":%d,\"x\":%d,\"a\":%d}",
+                             shown ? "," : "", s.spawn_ring[slot].frame,
+                             s.spawn_ring[slot].cam_x, s.spawn_ring[slot].edge,
+                             s.spawn_ring[slot].x, s.spawn_ring[slot].addr);
+            if (k < 0 || k >= room) { ring[r] = '\0'; ring_full = 1; break; }
+            r += k;
             shown++;
         }
         ring[r++] = ']';
@@ -1690,10 +1701,13 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt(
             "{\"id\":%d,\"ok\":true,\"extend\":%d,\"level\":%d,\"cursor\":%d,"
             "\"passed\":%u,\"spawned\":%u,\"jumped\":%u,\"scans\":%u,"
-            "\"records\":%s,\"skips\":%s,\"skip_total\":%u}",
+            "\"ungated\":%u,\"records\":%s,\"records_shown\":%d,"
+            "\"records_truncated\":%d,\"skips\":%s,\"skips_shown\":%d,"
+            "\"skips_truncated\":%d,\"skip_total\":%u}",
             id, s.spawn_extend, s.spawn_level, s.spawn_cursor,
             s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_scans,
-            recs, ring, s.spawn_ring_n);
+            s.spawn_ungated, recs, count, recs_full, ring, shown, ring_full,
+            s.spawn_ring_n);
         return 1;
     }
     if (strcmp(cmd, "sml2_view")) return 0;

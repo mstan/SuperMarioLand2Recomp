@@ -1,0 +1,8 @@
+[submodule "gb-recompiled"]
+	path = gb-recompiled
+	url = git@github.com:mstan/gbrecompiled.git
+	ignore = all
+[submodule "recomp-ui"]
+	path = recomp-ui
+	url = git@github.com:mstan/recomp-ui.git
+	ignore = all

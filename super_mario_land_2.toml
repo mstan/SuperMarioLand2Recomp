@@ -1,0 +1,13 @@
+# Super Mario Land 2 - 6 Golden Coins (UE) (V1.2) - Game Boy Static Recompiler Configuration
+# Used with: gbrecomp --config super_mario_land_2.toml
+
+[rom]
+path = "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.2) [!].gb"
+output_dir = "generated"
+runtime_dir = "../gb-recompiled/runtime"
+valid_crcs = [0x635A9112]
+output_prefix = "Super_Mario_Land_2"
+
+[options]
+aggressive_scan = true
+emit_comments = true

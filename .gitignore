@@ -1,0 +1,22 @@
+# build + recompiler output (regenerated locally from the ROM via gbrecomp)
+generated/
+generated_pre_launcher/
+build/
+logs/
+*.ppm
+# ROMs (copyrighted — users supply their own)
+roms/
+*.gb
+*.gbc
+*.sgb
+# runtime/user state
+*.sav
+*.rtc
+*.state*
+rom.cfg
+runtime_prefs.ini
+imgui.ini
+keybinds.ini
+*.log
+logs_*.log
+*.tmp

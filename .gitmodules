@@ -6,3 +6,6 @@
 	path = recomp-ui
 	url = git@github.com:mstan/recomp-ui.git
 	ignore = all
+[submodule "disasm/marioland2"]
+	path = disasm/marioland2
+	url = https://github.com/froggestspirit/marioland2

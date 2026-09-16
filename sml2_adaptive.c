@@ -62,6 +62,48 @@ typedef struct {
     uint8_t tile, attr;
 } Sml2Sprite;
 
+/* Why a frame was refused the wide view. Every `return 0` in validate_scene()
+ * names one of these, so "the view flickered" is always answerable with a
+ * reason rather than a shrug. Order is the order the checks run in. */
+enum {
+    SML2_REJ_NONE = 0,
+    SML2_REJ_MODE,        /* $FF9B is not scrolling gameplay / death        */
+    SML2_REJ_BONUS,       /* $A28B & 0xF0: bonus or minigame engine         */
+    SML2_REJ_TRANSITION,  /* $A20E: pipe/door room change in flight         */
+    SML2_REJ_LCDC,        /* LCDC is not the gameplay $E3                   */
+    SML2_REJ_WINDOW,      /* WY/WX are not the status bar's 136/7           */
+    SML2_REJ_CAMERA,      /* camera outside the block map                   */
+    SML2_REJ_NEGCOORD,    /* visible grid reaches negative world coords     */
+    SML2_REJ_BLOCKID,     /* block id > $7F: level RAM is not a level       */
+    SML2_REJ_TILE,        /* block-map decode vs hardware tilemap < 95%     */
+    SML2_REJ_ATTR,        /* derived CGB attribute != hardware, bits 0-6    */
+    SML2_REJ_NOTABLE,     /* CGB body with no DX attribute table            */
+    SML2_REJ_COUNT
+};
+
+static const char *const k_reject_name[SML2_REJ_COUNT] = {
+    "none", "mode", "bonus", "transition", "lcdc", "window", "camera",
+    "negcoord", "blockid", "tile", "attr", "notable"
+};
+
+/* One rejected frame, recorded as it happens. Always on, in every build: a
+ * flicker is a handful of frames scattered through a ten-thousand-frame run,
+ * and arming a trace after seeing it is exactly how you miss it. The probe
+ * free-runs and then reads the ring backwards. */
+#define SML2_GATE_LOG_CAP 256
+#define SML2_GATE_LOG_CELLS 4
+typedef struct {
+    unsigned frame;
+    uint8_t reason, mode, lcdc, wy, wx, bonus, transition, cgb;
+    uint8_t wram_bank, ram_bank, rom_bank, ly;
+    int16_t cam_x, cam_y, left, top;
+    int16_t score_hit, score_total, attr_hit, attr_total, prio_diff;
+    uint8_t tileset, cells;
+    struct {
+        uint8_t tx, ty, block, tile, hw_tile, attr, hw_attr, flags;
+    } cell[SML2_GATE_LOG_CELLS];
+} Sml2GateEvent;
+
 static struct {
     GBContext *ctx;
     int frame, valid;
@@ -78,6 +120,12 @@ static struct {
      * is a query rather than an experiment. gate_scene counts frames that
      * reached the two scoring gates at all. */
     unsigned gate_scene, gate_tile_fail, gate_attr_fail;
+    unsigned gate_reason[SML2_REJ_COUNT];
+    unsigned gate_frames;          /* frames validate_scene() was called on  */
+    unsigned flips;                /* wide <-> native transitions            */
+    int reject;                    /* this frame's reason, 0 when accepted   */
+    Sml2GateEvent gate_log[SML2_GATE_LOG_CAP];
+    unsigned gate_log_seq;         /* total events ever recorded             */
     /* Which CGB OBJ palettes and which tile-data bank the margin sprites
      * actually used on the last composed frame. Margin sprites come from
      * captured metasprite pieces, whose attribute byte is the ROM's own, so
@@ -330,6 +378,69 @@ static unsigned tile_row_addr(uint8_t tile, int row, uint8_t attr) {
     return off;
 }
 
+/* Record one rejection into the ring. Called on every `return 0` path. */
+static void gate_reject(GBContext *ctx, int reason) {
+    s.reject = reason;
+    if (reason > 0 && reason < SML2_REJ_COUNT) s.gate_reason[reason]++;
+    Sml2GateEvent *e = &s.gate_log[s.gate_log_seq % SML2_GATE_LOG_CAP];
+    memset(e, 0, sizeof *e);
+    e->frame = (unsigned)s.frame;
+    e->reason = (uint8_t)reason;
+    e->mode = (uint8_t)s.mode;
+    e->lcdc = s.lcdc;
+    e->wy = s.wy;
+    e->wx = s.wx;
+    e->bonus = peek(ctx, SML2_BONUS_ROOM);
+    e->transition = peek(ctx, SML2_TRANSITION);
+    e->cgb = (uint8_t)s.cgb;
+    /* The banks that were selected when snapshot() read the level. The block
+     * map spans $B000-$BFFF (cart SRAM, ram_bank) and $C000-$DFFF (WRAM, the
+     * $D000 half following SVBK), so a bank that is not the one the level
+     * lives in turns the decode into noise. */
+    e->wram_bank = (uint8_t)ctx->wram_bank;
+    e->ram_bank = (uint8_t)ctx->ram_bank;
+    e->rom_bank = (uint8_t)ctx->rom_bank;
+    e->ly = ((GBPPU *)ctx->ppu)->ly;
+    e->cam_x = (int16_t)s.cam_x;
+    e->cam_y = (int16_t)s.cam_y;
+    e->left = (int16_t)s.left;
+    e->top = (int16_t)s.top;
+    e->score_hit = (int16_t)s.score_hit;
+    e->score_total = (int16_t)s.score_total;
+    e->attr_hit = (int16_t)s.attr_hit;
+    e->attr_total = (int16_t)s.attr_total;
+    e->prio_diff = (int16_t)s.attr_prio_diff;
+    e->tileset = peek(ctx, SML2_DX_TILESET);
+    /* ...and the first few offending cells in full, so the reason comes with
+     * the evidence: which tile the block map decoded, which the hardware is
+     * showing, and both attribute bytes. */
+    if (reason == SML2_REJ_TILE || reason == SML2_REJ_ATTR) {
+        int rows = (s.wy + 7) / 8;
+        if (rows > 18) rows = 18;
+        for (int ty = 0; ty < rows && e->cells < SML2_GATE_LOG_CELLS; ty++) {
+            for (int tx = 0; tx < 21 && e->cells < SML2_GATE_LOG_CELLS; tx++) {
+                uint8_t m = s.cell_miss[ty * 21 + tx];
+                if (!m) continue;
+                int wx = s.left + tx * 8, wy = s.top + ty * 8;
+                unsigned sx = (unsigned)(s.scx + tx * 8) & 0xFFu;
+                unsigned sy = (unsigned)(s.scy + ty * 8) & 0xFFu;
+                unsigned cell = 0x1800u + (sy >> 3) * 32u + (sx >> 3);
+                uint8_t tile = tile_at(wx, wy);
+                int i = e->cells++;
+                e->cell[i].tx = (uint8_t)tx;
+                e->cell[i].ty = (uint8_t)ty;
+                e->cell[i].block = block_at(wx, wy);
+                e->cell[i].tile = tile;
+                e->cell[i].hw_tile = s.vram[cell];
+                e->cell[i].attr = attr_for_tile(tile);
+                e->cell[i].hw_attr = s.vram[VRAM_SIZE + cell];
+                e->cell[i].flags = m;
+            }
+        }
+    }
+    s.gate_log_seq++;
+}
+
 /* ---- scene validation ----------------------------------------------------
  * Two independent gates. The cheap one is the game's own mode enum plus the
  * flags that distinguish a bonus room or a pipe transition from scrolling
@@ -342,14 +453,17 @@ static unsigned tile_row_addr(uint8_t tile, int row, uint8_t attr) {
 static int validate_scene(GBContext *ctx) {
     s.score_hit = s.score_total = 0;
     s.attr_hit = s.attr_total = 0;
+    s.reject = SML2_REJ_NONE;
+    s.gate_frames++;
     s.mode = peek(ctx, SML2_MODE);
-    if (s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH) return 0;
-    if (peek(ctx, SML2_BONUS_ROOM) & 0xF0u) return 0;
-    if (peek(ctx, SML2_TRANSITION)) return 0;
-    if (s.lcdc != SML2_GAMEPLAY_LCDC) return 0;
-    if (s.wy != SML2_HUD_WY || s.wx != SML2_HUD_WX) return 0;
-    if (s.cam_x < SML2_CAM_CENTRE_X || s.cam_x >= SML2_MAP_COLS * 16) return 0;
-    if (s.cam_y < SML2_CAM_CENTRE_Y || s.cam_y >= SML2_MAP_ROWS * 16) return 0;
+#define REJECT(r) do { gate_reject(ctx, (r)); return 0; } while (0)
+    if (s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH) REJECT(SML2_REJ_MODE);
+    if (peek(ctx, SML2_BONUS_ROOM) & 0xF0u) REJECT(SML2_REJ_BONUS);
+    if (peek(ctx, SML2_TRANSITION)) REJECT(SML2_REJ_TRANSITION);
+    if (s.lcdc != SML2_GAMEPLAY_LCDC) REJECT(SML2_REJ_LCDC);
+    if (s.wy != SML2_HUD_WY || s.wx != SML2_HUD_WX) REJECT(SML2_REJ_WINDOW);
+    if (s.cam_x < SML2_CAM_CENTRE_X || s.cam_x >= SML2_MAP_COLS * 16) REJECT(SML2_REJ_CAMERA);
+    if (s.cam_y < SML2_CAM_CENTRE_Y || s.cam_y >= SML2_MAP_ROWS * 16) REJECT(SML2_REJ_CAMERA);
 
     /* Score only the BG rows the status-bar window does NOT cover. The bottom
      * tile row (y 136..143 with WY = 136) is behind the window on every
@@ -365,8 +479,8 @@ static int validate_scene(GBContext *ctx) {
     for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < 21; tx++) {
             int wx = s.left + tx * 8, wy = s.top + ty * 8;
-            if (wx < 0 || wy < 0) return 0;
-            if (block_at(wx, wy) > SML2_MAX_BLOCK_ID) return 0;
+            if (wx < 0 || wy < 0) REJECT(SML2_REJ_NEGCOORD);
+            if (block_at(wx, wy) > SML2_MAX_BLOCK_ID) REJECT(SML2_REJ_BLOCKID);
             unsigned sx = (unsigned)(s.scx + tx * 8) & 0xFFu;
             unsigned sy = (unsigned)(s.scy + ty * 8) & 0xFFu;
             unsigned cell = 0x1800u + (sy >> 3) * 32u + (sx >> 3);
@@ -410,10 +524,12 @@ static int validate_scene(GBContext *ctx) {
     s.attr_total = atotal;
     s.attr_prio_diff = aprio;
     s.gate_scene++;
-    if (total <= 0 || hit * 100 < total * 95) { s.gate_tile_fail++; return 0; }
+    if (total <= 0 || hit * 100 < total * 95) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
     /* Fail closed on colour: a single wrong attribute in the native window
      * means the derivation is wrong somewhere, so no margin is trustworthy. */
-    if (s.cgb && (!s.attr_ok || ahit != atotal)) { s.gate_attr_fail++; return 0; }
+    if (s.cgb && !s.attr_ok) { s.gate_attr_fail++; REJECT(SML2_REJ_NOTABLE); }
+    if (s.cgb && ahit != atotal) { s.gate_attr_fail++; REJECT(SML2_REJ_ATTR); }
+#undef REJECT
     return 1;
 }
 
@@ -602,7 +718,9 @@ static void snapshot(GBContext *ctx) {
     }
     s.build_count = 0;
 
+    int was_valid = s.valid;
     s.valid = validate_scene(ctx);
+    if (s.valid != was_valid && gb_custom_width > GB_SCREEN_WIDTH) s.flips++;
     if (!s.valid) {
         s.bound_left = s.bound_right = 0;
         s.extra_left = s.extra_right = 0;
@@ -908,6 +1026,67 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt("{\"id\":%d,\"ok\":%s}", id, f ? "true" : "false");
         return 1;
     }
+    if (!strcmp(cmd, "sml2_gate_log")) {
+        /* Query the always-on rejection ring: {"since":N} returns every event
+         * recorded from sequence N onward (clamped to what the ring still
+         * holds), newest last, plus the running per-reason totals. Nothing is
+         * armed and nothing is cleared -- the ring has been filling since the
+         * body booted. */
+        int since = json_int(json, "\"since\"", 0);
+        unsigned seq = s.gate_log_seq;
+        unsigned first = seq > SML2_GATE_LOG_CAP ? seq - SML2_GATE_LOG_CAP : 0;
+        if ((unsigned)since > first) first = (unsigned)since;
+        int want = json_int(json, "\"limit\"", 64);
+        if (want < 1) want = 1;
+        if (want > SML2_GATE_LOG_CAP) want = SML2_GATE_LOG_CAP;
+        if (seq - first > (unsigned)want) first = seq - (unsigned)want;
+
+        char reasons[512];
+        int n = 0;
+        for (int i = 0; i < SML2_REJ_COUNT; i++)
+            n += snprintf(reasons + n, sizeof reasons - (size_t)n, "%s\"%s\":%u",
+                          i ? "," : "", k_reject_name[i], s.gate_reason[i]);
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"seq\":%u,\"first\":%u,\"dropped\":%u,"
+            "\"frames\":%u,\"scored\":%u,\"flips\":%u,\"fallbacks\":%u,"
+            "\"reasons\":{%s}}",
+            id, seq, first,
+            seq > SML2_GATE_LOG_CAP && (unsigned)since < seq - SML2_GATE_LOG_CAP
+                ? (seq - SML2_GATE_LOG_CAP) - (unsigned)since : 0u,
+            s.gate_frames, s.gate_scene, s.flips, s.fallbacks, reasons);
+        for (unsigned k = first; k < seq; k++) {
+            const Sml2GateEvent *e = &s.gate_log[k % SML2_GATE_LOG_CAP];
+            char cells[512];
+            int c = 0;
+            cells[c++] = '[';
+            for (int i = 0; i < e->cells; i++)
+                c += snprintf(cells + c, sizeof cells - (size_t)c,
+                              "%s{\"tx\":%u,\"ty\":%u,\"block\":%u,\"tile\":%u,"
+                              "\"hw_tile\":%u,\"attr\":%u,\"hw_attr\":%u,\"flags\":%u}",
+                              i ? "," : "", e->cell[i].tx, e->cell[i].ty,
+                              e->cell[i].block, e->cell[i].tile, e->cell[i].hw_tile,
+                              e->cell[i].attr, e->cell[i].hw_attr, e->cell[i].flags);
+            cells[c++] = ']';
+            cells[c] = '\0';
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"seq\":%u,\"frame\":%u,\"reason\":\"%s\","
+                "\"mode\":%u,\"lcdc\":%u,\"wy\":%u,\"wx\":%u,\"bonus\":%u,"
+                "\"transition\":%u,\"cgb\":%u,\"tileset\":%u,\"wram_bank\":%u,"
+                "\"ram_bank\":%u,\"rom_bank\":%u,\"ly\":%u,\"cam\":[%d,%d],"
+                "\"left\":%d,\"top\":%d,\"score\":[%d,%d],\"attr_score\":[%d,%d],"
+                "\"prio_diff\":%d,\"cells\":%s}",
+                id, k, e->frame,
+                e->reason < SML2_REJ_COUNT ? k_reject_name[e->reason] : "?",
+                e->mode, e->lcdc, e->wy, e->wx, e->bonus, e->transition, e->cgb,
+                e->tileset, e->wram_bank, e->ram_bank, e->rom_bank, e->ly,
+                e->cam_x, e->cam_y, e->left, e->top,
+                e->score_hit, e->score_total, e->attr_hit, e->attr_total,
+                e->prio_diff, cells);
+        }
+        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"end\":true,\"seq\":%u}",
+                                 id, seq);
+        return 1;
+    }
     if (!strcmp(cmd, "sml2_score_map")) {
         /* 18 rows of 21 characters: '.' both matched, 't' tile mismatch,
          * 'a' attribute mismatch, 'b' both. From the snapshot the last scored
@@ -966,6 +1145,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"tileset\":%d,\"sprites\":%d,\"captures\":%u,\"capture_frames\":%u,"
         "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,"
         "\"gate_scene\":%u,\"gate_tile_fail\":%u,\"gate_attr_fail\":%u,"
+        "\"reject\":\"%s\",\"flips\":%u,\"gate_frames\":%u,\"gate_log_seq\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
@@ -973,6 +1153,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.ctx ? peek(s.ctx, SML2_DX_TILESET) : 0, s.count,
         s.captures, s.capture_frames, s.rescues, s.ghosts, s.fallbacks,
         s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
+        s.reject >= 0 && s.reject < SML2_REJ_COUNT ? k_reject_name[s.reject] : "?",
+        s.flips, s.gate_frames, s.gate_log_seq,
         s.sprite_pal_mask, s.sprite_bank1, s.frame);
     return 1;
 }

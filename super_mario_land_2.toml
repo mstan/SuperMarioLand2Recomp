@@ -20,6 +20,11 @@ output_prefix = "Super_Mario_Land_2"
 symbols = "recomp/sml2_v10.sym"
 
 [options]
+# Explicit rather than relying on the sibling auto-discovery, so it is obvious
+# this body does NOT share seeds with the DX one. Re-harvested on V1.0 (617
+# sites): the previous 613 came from V1.2, whose bank 0 is this one shifted +3
+# over 0x0049C-0x0383D, so those addresses would land mid-instruction here.
+dispatch_misses = "dispatch_misses.toml"
 aggressive_scan = true
 emit_comments = true
 # This tree is the primary project of a two-body executable: its main() boots

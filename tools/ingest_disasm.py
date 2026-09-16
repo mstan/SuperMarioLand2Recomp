@@ -34,8 +34,6 @@ def add(bank, addr, name, kind, size=1):
         return
     syms[key] = (name, kind, size)
 
-DATA_WORDS = re.compile(r'(?i)gfx|tile|table|data|palette|pointer|level_|map|text|sprite|mapping|header|set|bin')
-
 def harvest(text, default_bank):
     bank = default_bank
     for line in text.splitlines():
@@ -63,8 +61,12 @@ def harvest(text, default_bank):
             off = int(om.group(1), 16)
             if off < len(rom):
                 bk, ad = rom_to_banked(off)
-                if name.startswith('UnknownData') or (DATA_WORDS.search(name) and not name.startswith('Unknown')):
-                    add(bk, ad, name, 'data', 1)
+                # Names are NOT evidence of kind (ScrollLevelMap, LoadMarioGFX are
+                # code). Exact data extents come from INCBIN ranges only; named
+                # labels are code candidates and are verified against ROM bytes
+                # below (dropped if nothing calls/jumps to them).
+                if name.startswith('UnknownData'):
+                    pass
                 elif name.startswith('UnknownRJump') or name.startswith('UnknownJump'):
                     add(bk, ad, name, 'label')
                 else:
@@ -75,7 +77,7 @@ def harvest(text, default_bank):
             kind, ad = um.group(1), int(um.group(2), 16)
             bk = 0 if ad < 0x4000 else bank
             if kind == 'Data':
-                add(bk, ad, name, 'data', 1)
+                pass  # extent unknown; INCBIN ranges carry the real data map
             elif kind == 'Call':
                 add(bk, ad, name, 'function')
             else:
@@ -91,8 +93,18 @@ for f in ['home.asm', 'main.asm', 'owmovementpointers.asm', 'gfx/spritemappings.
 # Verify code entries: a CALL/JP with this operand must exist in the ROM (same bank or bank 0)
 def referenced(bank, addr, opcodes):
     pats = [bytes([op, addr & 0xFF, addr >> 8]) for op in opcodes]
-    regions = [rom[:0x4000]] + ([rom[bank << 14:(bank + 1) << 14]] if bank else [])
-    return any(p in r for p in pats for r in regions)
+    regions = [(0, rom[:0x4000])] + ([(bank, rom[bank << 14:(bank + 1) << 14])] if bank else [])
+    if any(p in r for p in pats for _, r in regions):
+        return True
+    # JR/JR cc (18/20/28/30/38) with a matching relative displacement
+    for rbank, r in regions:
+        base = 0 if rbank == 0 else 0x4000
+        for i in range(len(r) - 1):
+            if r[i] in (0x18, 0x20, 0x28, 0x30, 0x38):
+                d = r[i + 1]; d = d - 256 if d > 127 else d
+                if base + i + 2 + d == addr:
+                    return True
+    return False
 
 kept, dropped = [], []
 for (bank, addr), (name, kind, size) in sorted(syms.items()):

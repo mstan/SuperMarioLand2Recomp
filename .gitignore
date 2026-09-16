@@ -24,3 +24,4 @@ logs_*.log
 # python probe bytecode
 __pycache__/
 *.pyc
+_symtest_*/

@@ -23,13 +23,13 @@
 00:0300 UnknownRJump_0x0300 ; @label
 00:031C UnknownCall_0x031C ; @function
 00:0322 UnknownRJump_0x0322 ; @label
-00:0327 BlankBGMap1 ; @data
+00:0327 BlankBGMap1 ; @function
 00:0336 CopyMem ; @function
 00:033F Data_00_033F ; @data @size=9
 00:0348 DisableVBlank ; @function
 00:0350 UnknownRJump_0x0350 ; @label
 00:0361 UnknownCall_0x0361 ; @function
-00:0386 Read_Level_Data ; @data
+00:0386 Read_Level_Data ; @function
 00:03E1 Data_00_03E1 ; @data @size=16
 00:040A UnknownRJump_0x040A ; @label
 00:043F UnknownRJump_0x043F ; @label
@@ -45,7 +45,7 @@
 00:0640 UnknownRJump_0x0640 ; @label
 00:0652 UnknownCall_0x0652 ; @function
 00:0665 UnknownRJump_0x0665 ; @label
-00:0669 LoadMarioGFX ; @data
+00:0669 LoadMarioGFX ; @function
 00:06C0 UnknownRJump_0x06C0 ; @label
 00:0763 Data_00_0763 ; @data @size=8
 00:076B UnknownCall_0x076B ; @function
@@ -63,7 +63,7 @@
 00:09BE UnknownRJump_0x09BE ; @label
 00:0A35 UnknownCall_0x0A35 ; @function
 00:0A8A UnknownRJump_0x0A8A ; @label
-00:0AFB ScrollLevelMap ; @data
+00:0AFB ScrollLevelMap ; @function
 00:0B2A UnknownCall_0x0B2A ; @function
 00:0B39 UnknownRJump_0x0B39 ; @label
 00:0B5E UnknownRJump_0x0B5E ; @label
@@ -203,17 +203,12 @@
 00:1886 UnknownRJump_0x1886 ; @label
 00:188B UnknownRJump_0x188B ; @label
 00:18AE UnknownRJump_0x18AE ; @label
-00:18AF MarioSpeedTableV ; @data
-00:18FB MarioSpeedTableVGoo ; @data
-00:1947 MarioSpeedTableVWater ; @data
 00:1993 UnknownCall_0x1993 ; @function
 00:19AC UnknownRJump_0x19AC ; @label
 00:19B0 UnknownRJump_0x19B0 ; @label
 00:19C1 UnknownRJump_0x19C1 ; @label
 00:19D2 UnknownRJump_0x19D2 ; @label
 00:19F1 UnknownRJump_0x19F1 ; @label
-00:19FF MarioSpeedTableH ; @data
-00:1AFF MarioSpeedTableHWater ; @data
 00:1BFF UnknownCall_0x1BFF ; @function
 00:1C39 UnknownRJump_0x1C39 ; @label
 00:1C4E UnknownRJump_0x1C4E ; @label
@@ -253,7 +248,6 @@
 00:1EF0 UnknownRJump_0x1EF0 ; @label
 00:1EF5 Data_00_1EF5 ; @data @size=5
 00:1EFA UnknownCall_0x1EFA ; @function
-00:1F51 UnknownData_0x1F51 ; @data
 00:1FB1 Data_00_1FB1 ; @data @size=33
 00:1FD2 ReadJoypad ; @function
 00:200C UnknownCall_0x200C ; @function
@@ -388,7 +382,6 @@
 00:31C2 UnknownRJump_0x31C2 ; @label
 00:31D1 UnknownRJump_0x31D1 ; @label
 00:31E0 Data_00_31E0 ; @data @size=15
-00:31EF MarioSpeedTableDead ; @data
 00:324F UnknownCall_0x324F ; @function
 00:3252 UnknownRJump_0x3252 ; @label
 00:3261 UnknownCall_0x3261 ; @function
@@ -428,8 +421,6 @@
 00:3558 UnknownRJump_0x3558 ; @label
 00:356E UnknownRJump_0x356E ; @label
 00:35EA Data_00_35EA ; @data @size=64
-00:362A LevelEnemySets ; @data
-00:36AA LevelTileSets ; @data
 00:372A Data_00_372A ; @data @size=11
 00:3735 UnknownCall_0x3735 ; @function
 00:3753 UnknownCall_0x3753 ; @function
@@ -446,6 +437,7 @@
 00:3AC8 Data_00_3AC8 ; @data @size=20
 00:3C94 UnknownCall_0x3C94 ; @function
 00:3C9F UnknownCall_0x3C9F ; @function
+00:3CAA UnknownCall_0x3CAA ; @function
 00:3CBC UnknownRJump_0x3CBC ; @label
 00:3CD7 UnknownRJump_0x3CD7 ; @label
 00:3D08 UnknownRJump_0x3D08 ; @label
@@ -461,6 +453,7 @@
 00:3ED8 UnknownRJump_0x3ED8 ; @label
 00:3EE3 UnknownRJump_0x3EE3 ; @label
 00:3EFF UnknownRJump_0x3EFF ; @label
+00:3F0E UnknownCall_0x3F0E ; @function
 00:3F18 UnknownRJump_0x3F18 ; @label
 00:3F1D UnknownRJump_0x3F1D ; @label
 00:3FAC UnknownRJump_0x3FAC ; @label
@@ -512,8 +505,6 @@
 01:559F UnknownRJump_0x559F ; @label
 01:55C0 UnknownRJump_0x55C0 ; @label
 01:55C6 UnknownRJump_0x55C6 ; @label
-01:55CB Level_Header_Pointers ; @data
-01:560B Level_Header_01 ; @data
 01:588B Data_01_588B ; @data @size=148
 01:591F UnknownJump_0x591F ; @label
 01:5933 Data_01_5933 ; @data @size=10
@@ -672,18 +663,15 @@
 02:8611 UnknownRJump_0x8611 ; @label
 02:864A UnknownRJump_0x864A ; @label
 02:8670 UnknownRJump_0x8670 ; @label
-02:867C UnknownData_0x867C ; @data
 02:868A UnknownRJump_0x868A ; @label
 02:8695 UnknownRJump_0x8695 ; @label
 02:86A0 UnknownJump_0x86A0 ; @label
-02:86B9 UnknownData_0x86B9 ; @data
 02:86C6 UnknownRJump_0x86C6 ; @label
-02:86D2 UnknownData_0x86D2 ; @data
+02:86D2 UnknownRJump_0x86D2 ; @label
 02:86DA UnknownRJump_0x86DA ; @label
 02:86E4 UnknownRJump_0x86E4 ; @label
 02:8708 UnknownRJump_0x8708 ; @label
 02:8721 UnknownRJump_0x8721 ; @label
-02:8737 UnknownData_0x8737 ; @data
 02:8C3C UnknownRJump_0x8C3C ; @label
 02:8C52 UnknownRJump_0x8C52 ; @label
 02:8C56 UnknownRJump_0x8C56 ; @label
@@ -707,43 +695,29 @@
 02:8DBE UnknownRJump_0x8DBE ; @label
 02:8DDF UnknownRJump_0x8DDF ; @label
 02:8E20 UnknownRJump_0x8E20 ; @label
-02:8E3F UnknownData_0x8E3F ; @data
 02:8E89 UnknownRJump_0x8E89 ; @label
-02:8E9A UnknownData_0x8E9A ; @data
-02:905B UnknownData_0x905B ; @data
 02:9290 UnknownRJump_0x9290 ; @label
-02:929A UnknownData_0x929A ; @data
 02:92A5 UnknownRJump_0x92A5 ; @label
 02:92C4 UnknownRJump_0x92C4 ; @label
-02:92E8 UnknownData_0x92E8 ; @data
 02:934C UnknownRJump_0x934C ; @label
-02:934E UnknownData_0x934E ; @data
 02:9399 UnknownRJump_0x9399 ; @label
 02:93CD UnknownRJump_0x93CD ; @label
 02:93D5 UnknownRJump_0x93D5 ; @label
 02:93EE UnknownRJump_0x93EE ; @label
-02:93F0 UnknownData_0x93F0 ; @data
 02:940F UnknownRJump_0x940F ; @label
 02:9435 UnknownRJump_0x9435 ; @label
 02:9489 UnknownRJump_0x9489 ; @label
-02:94AC UnknownData_0x94AC ; @data
 02:94CD UnknownRJump_0x94CD ; @label
 02:94DC UnknownRJump_0x94DC ; @label
 02:94E1 UnknownRJump_0x94E1 ; @label
 02:9516 UnknownRJump_0x9516 ; @label
 02:955A UnknownRJump_0x955A ; @label
-02:9563 UnknownData_0x9563 ; @data
 02:9569 UnknownRJump_0x9569 ; @label
-02:9595 UnknownData_0x9595 ; @data
-02:9641 UnknownData_0x9641 ; @data
 02:965E UnknownRJump_0x965E ; @label
-02:966A UnknownData_0x966A ; @data
 02:96B2 UnknownRJump_0x96B2 ; @label
-02:96BE UnknownData_0x96BE ; @data
 02:9725 UnknownRJump_0x9725 ; @label
 02:972D UnknownRJump_0x972D ; @label
 02:9752 UnknownRJump_0x9752 ; @label
-02:9754 UnknownData_0x9754 ; @data
 02:9770 UnknownRJump_0x9770 ; @label
 02:980D UnknownRJump_0x980D ; @label
 02:981B UnknownRJump_0x981B ; @label
@@ -752,17 +726,14 @@
 02:984B UnknownRJump_0x984B ; @label
 02:9851 UnknownRJump_0x9851 ; @label
 02:9862 UnknownRJump_0x9862 ; @label
-02:9864 UnknownData_0x9864 ; @data
 02:98A0 UnknownRJump_0x98A0 ; @label
 02:98C0 UnknownRJump_0x98C0 ; @label
 02:98F0 UnknownRJump_0x98F0 ; @label
 02:98F8 UnknownJump_0x98F8 ; @label
 02:9908 UnknownRJump_0x9908 ; @label
-02:990A UnknownData_0x990A ; @data
 02:991F UnknownRJump_0x991F ; @label
 02:9946 UnknownRJump_0x9946 ; @label
 02:994A UnknownRJump_0x994A ; @label
-02:994C UnknownData_0x994C ; @data
 02:9966 UnknownRJump_0x9966 ; @label
 02:996E UnknownRJump_0x996E ; @label
 02:998E UnknownRJump_0x998E ; @label
@@ -774,22 +745,19 @@
 02:99B9 UnknownRJump_0x99B9 ; @label
 02:99BC UnknownRJump_0x99BC ; @label
 02:99DE UnknownRJump_0x99DE ; @label
-02:99E2 UnknownData_0x99E2 ; @data
 02:9C2B UnknownRJump_0x9C2B ; @label
 02:9C3F UnknownJump_0x9C3F ; @label
-02:9C67 UnknownData_0x9C67 ; @data
+02:9C67 UnknownRJump_0x9C67 ; @label
 02:9C6C UnknownRJump_0x9C6C ; @label
 02:9C7F UnknownRJump_0x9C7F ; @label
 02:9C8B UnknownJump_0x9C8B ; @label
 02:9CA0 UnknownRJump_0x9CA0 ; @label
-02:9CA2 UnknownData_0x9CA2 ; @data
 02:9CBA UnknownRJump_0x9CBA ; @label
 02:9CDF UnknownJump_0x9CDF ; @label
 02:9CF6 UnknownRJump_0x9CF6 ; @label
 02:9D3D UnknownRJump_0x9D3D ; @label
 02:9D5B UnknownRJump_0x9D5B ; @label
 02:9D77 UnknownRJump_0x9D77 ; @label
-02:9D79 UnknownData_0x9D79 ; @data
 02:9DA2 UnknownRJump_0x9DA2 ; @label
 02:9DB4 UnknownRJump_0x9DB4 ; @label
 02:9DC1 UnknownRJump_0x9DC1 ; @label
@@ -797,17 +765,15 @@
 02:9DF2 UnknownRJump_0x9DF2 ; @label
 02:9E32 UnknownRJump_0x9E32 ; @label
 02:9E5B UnknownRJump_0x9E5B ; @label
-02:9E5D UnknownData_0x9E5D ; @data
 02:9E81 UnknownRJump_0x9E81 ; @label
 02:9E9A UnknownRJump_0x9E9A ; @label
 02:9EAA UnknownRJump_0x9EAA ; @label
 02:9EC8 UnknownRJump_0x9EC8 ; @label
 02:9F1E UnknownRJump_0x9F1E ; @label
 02:9F36 UnknownRJump_0x9F36 ; @label
-02:9F38 UnknownData_0x9F38 ; @data
 02:9F7C UnknownJump_0x9F7C ; @label
 02:9F8F UnknownRJump_0x9F8F ; @label
-02:9FA4 UnknownData_0x9FA4 ; @data
+02:9FA4 UnknownRJump_0x9FA4 ; @label
 02:9FD1 UnknownRJump_0x9FD1 ; @label
 02:9FDF UnknownRJump_0x9FDF ; @label
 02:9FF2 UnknownRJump_0x9FF2 ; @label
@@ -815,51 +781,39 @@
 02:A00E UnknownRJump_0xA00E ; @label
 02:A041 UnknownRJump_0xA041 ; @label
 02:A05C UnknownRJump_0xA05C ; @label
-02:A05E UnknownData_0xA05E ; @data
-02:A08C UnknownData_0xA08C ; @data
 02:A099 UnknownRJump_0xA099 ; @label
 02:A0AB UnknownRJump_0xA0AB ; @label
 02:A0B1 UnknownRJump_0xA0B1 ; @label
 02:A0E8 UnknownRJump_0xA0E8 ; @label
 02:A103 UnknownRJump_0xA103 ; @label
-02:A105 UnknownData_0xA105 ; @data
 02:A159 UnknownRJump_0xA159 ; @label
 02:A171 UnknownRJump_0xA171 ; @label
 02:A17D UnknownRJump_0xA17D ; @label
 02:A1C0 UnknownRJump_0xA1C0 ; @label
 02:A1C6 UnknownRJump_0xA1C6 ; @label
 02:A295 UnknownRJump_0xA295 ; @label
-02:A297 UnknownData_0xA297 ; @data
 02:A2B1 UnknownRJump_0xA2B1 ; @label
 02:A2D0 UnknownRJump_0xA2D0 ; @label
 02:A2E3 UnknownRJump_0xA2E3 ; @label
-02:A2E5 UnknownData_0xA2E5 ; @data
 02:A316 UnknownRJump_0xA316 ; @label
 02:A362 UnknownRJump_0xA362 ; @label
 02:A39C UnknownRJump_0xA39C ; @label
 02:A3B6 UnknownRJump_0xA3B6 ; @label
-02:A3C1 UnknownData_0xA3C1 ; @data
 02:A434 UnknownRJump_0xA434 ; @label
 02:A465 UnknownRJump_0xA465 ; @label
-02:A472 UnknownData_0xA472 ; @data
 02:A4DD UnknownRJump_0xA4DD ; @label
-02:A4EA UnknownData_0xA4EA ; @data
 02:A551 UnknownRJump_0xA551 ; @label
 02:A582 UnknownRJump_0xA582 ; @label
-02:A58F UnknownData_0xA58F ; @data
 02:A5E9 UnknownRJump_0xA5E9 ; @label
 02:A62E UnknownRJump_0xA62E ; @label
 02:A6A6 UnknownRJump_0xA6A6 ; @label
-02:A6B7 UnknownData_0xA6B7 ; @data
 02:A6F2 UnknownRJump_0xA6F2 ; @label
 02:A723 UnknownRJump_0xA723 ; @label
-02:A730 UnknownData_0xA730 ; @data
 02:A780 UnknownRJump_0xA780 ; @label
 02:A7C6 UnknownRJump_0xA7C6 ; @label
 02:A857 UnknownRJump_0xA857 ; @label
 02:A8D6 UnknownRJump_0xA8D6 ; @label
 02:A90A UnknownRJump_0xA90A ; @label
-02:A90E UnknownData_0xA90E ; @data
 02:A9D4 UnknownRJump_0xA9D4 ; @label
 02:A9FC UnknownRJump_0xA9FC ; @label
 02:AA20 UnknownRJump_0xAA20 ; @label
@@ -869,15 +823,11 @@
 02:AA79 UnknownRJump_0xAA79 ; @label
 02:AA86 UnknownRJump_0xAA86 ; @label
 02:AA8C UnknownRJump_0xAA8C ; @label
-02:AAA8 UnknownData_0xAAA8 ; @data
 02:AADB UnknownRJump_0xAADB ; @label
 02:AADE UnknownRJump_0xAADE ; @label
 02:AB29 UnknownRJump_0xAB29 ; @label
-02:AB33 UnknownData_0xAB33 ; @data
-02:AB71 UnknownData_0xAB71 ; @data
 02:ABB6 UnknownRJump_0xABB6 ; @label
 02:AC00 UnknownRJump_0xAC00 ; @label
-02:AC04 UnknownData_0xAC04 ; @data
 02:ACAC UnknownRJump_0xACAC ; @label
 02:ACDE UnknownRJump_0xACDE ; @label
 02:ACFE UnknownRJump_0xACFE ; @label
@@ -889,7 +839,6 @@
 02:AD7C UnknownRJump_0xAD7C ; @label
 02:ADBE UnknownRJump_0xADBE ; @label
 02:ADF9 UnknownRJump_0xADF9 ; @label
-02:ADFD UnknownData_0xADFD ; @data
 02:AE6F UnknownRJump_0xAE6F ; @label
 02:AEBF UnknownRJump_0xAEBF ; @label
 02:AF15 UnknownRJump_0xAF15 ; @label
@@ -904,45 +853,30 @@
 02:AFB4 UnknownRJump_0xAFB4 ; @label
 02:AFB7 UnknownRJump_0xAFB7 ; @label
 02:AFBA UnknownRJump_0xAFBA ; @label
-02:AFE6 UnknownData_0xAFE6 ; @data
 02:B010 UnknownRJump_0xB010 ; @label
 02:B023 UnknownRJump_0xB023 ; @label
-02:B039 UnknownData_0xB039 ; @data
-02:B0C5 UnknownData_0xB0C5 ; @data
 02:B0DF UnknownRJump_0xB0DF ; @label
-02:B0FB UnknownData_0xB0FB ; @data
+02:B0FB UnknownRJump_0xB0FB ; @label
 02:B101 UnknownRJump_0xB101 ; @label
-02:B105 UnknownData_0xB105 ; @data
 02:B10F UnknownRJump_0xB10F ; @label
 02:B138 UnknownRJump_0xB138 ; @label
 02:B145 UnknownRJump_0xB145 ; @label
 02:B161 UnknownRJump_0xB161 ; @label
-02:B173 UnknownData_0xB173 ; @data
-02:B18B UnknownData_0xB18B ; @data
 02:B191 UnknownRJump_0xB191 ; @label
-02:B1A3 UnknownData_0xB1A3 ; @data
-02:B1DD UnknownData_0xB1DD ; @data
 02:B1F0 UnknownRJump_0xB1F0 ; @label
-02:B1FF UnknownData_0xB1FF ; @data
 02:B232 UnknownRJump_0xB232 ; @label
 02:B259 UnknownRJump_0xB259 ; @label
 02:B28D UnknownRJump_0xB28D ; @label
 02:B2A9 UnknownRJump_0xB2A9 ; @label
-02:B2AF UnknownData_0xB2AF ; @data
 02:B2D5 UnknownRJump_0xB2D5 ; @label
 02:B302 UnknownRJump_0xB302 ; @label
 02:B349 UnknownRJump_0xB349 ; @label
-02:B356 UnknownData_0xB356 ; @data
 02:B370 UnknownRJump_0xB370 ; @label
-02:B388 UnknownData_0xB388 ; @data
 02:B3A2 UnknownRJump_0xB3A2 ; @label
 02:B3A8 UnknownRJump_0xB3A8 ; @label
-02:B3B4 UnknownData_0xB3B4 ; @data
 02:B3C5 UnknownRJump_0xB3C5 ; @label
 02:B3EE UnknownRJump_0xB3EE ; @label
-02:B3FB UnknownData_0xB3FB ; @data
 02:B407 UnknownRJump_0xB407 ; @label
-02:B41A UnknownData_0xB41A ; @data
 03:40B1 Data_03_40B1 ; @data @size=336
 03:4F11 Data_03_4F11 ; @data @size=456
 03:6037 Data_03_6037 ; @data @size=2943
@@ -956,7 +890,6 @@
 03:C06E UnknownRJump_0xC06E ; @label
 03:C076 UnknownRJump_0xC076 ; @label
 03:C077 UnknownRJump_0xC077 ; @label
-03:C0B1 UnknownData_0xC0B1 ; @data
 03:EBB6 UnknownRJump_0xEBB6 ; @label
 03:EBD8 UnknownRJump_0xEBD8 ; @label
 03:EC0B UnknownRJump_0xEC0B ; @label
@@ -964,8 +897,7 @@
 03:EC2C UnknownRJump_0xEC2C ; @label
 03:EC38 UnknownRJump_0xEC38 ; @label
 03:EC46 UnknownRJump_0xEC46 ; @label
-03:EC61 UnknownData_0xEC61 ; @data
-03:FFA0 UnknownData_0xFFA0 ; @data
+03:FFA0 UnknownCall_0xFFA0 ; @function
 04:401D Data_04_401D ; @data @size=16
 04:4030 _UpdateSound ; @function
 04:407E Data_04_407E ; @data @size=96
@@ -1044,76 +976,23 @@
 05:4000 Data_05_4000 ; @data @size=67
 05:40A8 Data_05_40A8 ; @data @size=46
 05:4121 Data_05_4121 ; @data @size=196
-05:41E5 GFX_TitleScreen ; @data
 05:59E5 Data_05_59E5 ; @data @size=9755
-06:4000 GFX_Mario ; @data
-06:4800 GFX_MarioDark ; @data
-06:5000 GFX_MarioMoon ; @data
-06:5800 GFX_EnemiesClassic ; @data
-06:5B80 GFX_EnemiesTreeZone1 ; @data
-06:5F00 GFX_EnemiesTreeZone2 ; @data
-06:6280 GFX_EnemiesTreeZone3 ; @data
-06:6600 GFX_EnemiesTreeZone4 ; @data
-06:6980 GFX_EnemiesTreeZoneBoss ; @data
+06:4000 GFX_Mario ; @function
 06:6D00 Data_06_6D00 ; @data @size=4864
-07:4000 GFX_TilesetLevel1 ; @data
-07:4600 GFX_TilesetTreeZone1 ; @data
-07:4C00 GFX_TilesetTreeZone2 ; @data
-07:5200 GFX_TilesetTreeZone3 ; @data
-07:5800 GFX_TilesetTreeZone4 ; @data
-07:5E00 GFX_TilesetTreeZone5 ; @data
-07:6400 GFX_TilesetTreeZoneBoss ; @data
+07:4000 GFX_TilesetLevel1 ; @function
 07:6A00 Data_07_6A00 ; @data @size=5632
-08:4000 Level_TileMap_01 ; @data
-08:4200 Level_TileMap_02 ; @data
-08:4400 Level_TileMap_03 ; @data
-08:4600 Level_TileMap_04 ; @data
-08:4800 Level_TileMap_05 ; @data
-08:4A00 Level_TileMap_06 ; @data
-08:4C00 Level_TileMap_07 ; @data
-08:4E00 Level_TileMap_08 ; @data
-08:5000 Level_TileMap_09 ; @data
-08:5200 Level_TileMap_10 ; @data
-08:5400 Level_TileMap_11 ; @data
-08:5600 Level_TileMap_12 ; @data
-08:5800 Level_TileMap_13 ; @data
-08:5A00 Level_TileMap_14 ; @data
-08:5C00 Level_TileMap_15 ; @data
-08:5E00 Level_TileMap_16 ; @data
-08:6000 Level_TileMap_17 ; @data
-08:6200 Level_TileMap_18 ; @data
-08:6400 Level_TileMap_19 ; @data
-08:6600 Level_TileMap_20 ; @data
-08:6800 Level_TileMap_21 ; @data
-08:6A00 Level_TileMap_22 ; @data
-08:6C00 Level_TileMap_23 ; @data
-08:6E00 Level_TileMap_24 ; @data
-08:7000 Level_TileMap_25 ; @data
-08:7200 Level_TileMap_26 ; @data
-08:7400 Level_TileMap_27 ; @data
-08:7600 Level_TileMap_28 ; @data
+08:4000 Level_TileMap_01 ; @function
+08:5C00 Level_TileMap_15 ; @function
+08:6000 Level_TileMap_17 ; @function
 08:7800 Data_08_7800 ; @data @size=2048
 09:4000 Data_09_4000 ; @data @size=752
 09:42F8 Data_09_42F8 ; @data @size=520
-09:4500 Level_01 ; @data
-09:4E5B Level_26 ; @data
-09:5105 Level_27 ; @data
-09:5526 Level_28 ; @data
 09:5CF7 Data_09_5CF7 ; @data @size=8969
 0A:4000 Data_0A_4000 ; @data @size=752
 0A:42F6 Data_0A_42F6 ; @data @size=522
-0A:4500 Level_02 ; @data
-0A:519B Level_03 ; @data
-0A:6A87 Level_04 ; @data
 0A:7215 Data_0A_7215 ; @data @size=3563
 0B:4000 Data_0B_4000 ; @data @size=752
 0B:42FC Data_0B_42FC ; @data @size=516
-0B:4500 Level_05 ; @data
-0B:4CA7 Level_06 ; @data
-0B:5192 Level_31 ; @data
-0B:540B Level_30 ; @data
-0B:58D7 Level_29 ; @data
-0B:60F5 Level_32 ; @data
 0B:66AA Data_0B_66AA ; @data @size=6486
 0C:412A Data_0C_412A ; @data @size=4
 0C:4132 Data_0C_4132 ; @data @size=14
@@ -1126,17 +1005,10 @@
 0C:4777 Data_0C_4777 ; @data @size=69
 0C:4985 Data_0C_4985 ; @data @size=72
 0C:4A2A Data_0C_4A2A ; @data @size=13782
-0D:4000 GFX_OW_Overworld ; @data
+0D:4000 GFX_OW_Overworld ; @function
 0D:5800 Data_0D_5800 ; @data @size=512
-0D:5A00 GFX_OW_MacroZone ; @data
-0D:7000 TileMapping_Overworld1x1 ; @data
-0D:7400 TileMapping_Overworld2x1 ; @data
-0D:7800 TileMapping_Overworld1x2 ; @data
-0D:7C00 TileMapping_Overworld2x2 ; @data
 0E:4000 Data_0E_4000 ; @data @size=512
-0E:4200 GFX_OW_PumpkinZone ; @data
 0E:5800 Data_0E_5800 ; @data @size=512
-0E:7000 TileMapping_PumpkinZone ; @data
 0E:7FC0 Data_0E_7FC0 ; @data @size=64
 0F:40FC Data_0F_40FC ; @data @size=5
 0F:4127 Data_0F_4127 ; @data @size=10
@@ -1173,42 +1045,25 @@
 0F:750B Data_0F_750B ; @data @size=5
 0F:764D Data_0F_764D ; @data @size=2483
 10:4000 Data_10_4000 ; @data @size=512
-10:4200 GFX_OW_SpaceZone ; @data
 10:5800 Data_10_5800 ; @data @size=2048
-10:6000 GFX_OW_MarioCastle ; @data
+10:6000 GFX_OW_MarioCastle ; @function
 10:7B40 Data_10_7B40 ; @data @size=1216
 11:4000 Data_11_4000 ; @data @size=512
-11:4200 GFX_OW_MarioZone ; @data
 11:5800 Data_11_5800 ; @data @size=2048
-11:6000 GFX_OW_WarioCastle ; @data
+11:6000 GFX_OW_WarioCastle ; @function
 11:7000 Data_11_7000 ; @data @size=2048
 11:7C80 Data_11_7C80 ; @data @size=896
 12:4000 Data_12_4000 ; @data @size=752
 12:42F8 Data_12_42F8 ; @data @size=520
-12:4500 Level_07 ; @data
-12:4E29 Level_08 ; @data
-12:54D9 Level_09 ; @data
-12:5FF2 Level_10 ; @data
 12:6948 Data_12_6948 ; @data @size=5816
 13:4000 Data_13_4000 ; @data @size=752
 13:42F8 Data_13_42F8 ; @data @size=520
-13:4500 Level_18 ; @data
-13:4E19 Level_19 ; @data
-13:5AFF Level_20 ; @data
-13:633A Level_25 ; @data
 13:7EAF Data_13_7EAF ; @data @size=337
 14:4000 Data_14_4000 ; @data @size=752
 14:42F6 Data_14_42F6 ; @data @size=522
-14:4500 Level_15 ; @data
-14:4AB4 Level_16 ; @data
-14:5EC9 Level_17 ; @data
 14:6341 Data_14_6341 ; @data @size=7359
 15:4000 Data_15_4000 ; @data @size=752
 15:42F8 Data_15_42F8 ; @data @size=520
-15:4500 Level_21 ; @data
-15:4B41 Level_22 ; @data
-15:5242 Level_23 ; @data
-15:5C4C Level_24 ; @data
 15:62DE Data_15_62DE ; @data @size=7458
 16:4040 Data_16_4040 ; @data @size=193
 16:4112 Data_16_4112 ; @data @size=8
@@ -1356,10 +1211,6 @@
 16:770A Data_16_770A ; @data @size=2294
 17:4000 Data_17_4000 ; @data @size=752
 17:42F8 Data_17_42F8 ; @data @size=520
-17:4500 Level_11 ; @data
-17:4E21 Level_12 ; @data
-17:5980 Level_13 ; @data
-17:64F4 Level_14 ; @data
 17:781A Data_17_781A ; @data @size=2022
 18:4000 Data_18_4000 ; @data @size=40
 18:4037 Data_18_4037 ; @data @size=24
@@ -1386,7 +1237,6 @@
 18:4EAF Data_18_4EAF ; @data @size=6
 18:4F5A Data_18_4F5A ; @data @size=275
 18:51B1 Data_18_51B1 ; @data @size=1105
-18:5602 OW_Movement_Pointers ; @data
 18:5A40 Data_18_5A40 ; @data @size=9664
 19:6092 Data_19_6092 ; @data @size=8046
 1A:401A Data_1A_401A ; @data @size=40
@@ -1396,60 +1246,16 @@
 1A:444F Data_1A_444F ; @data @size=16
 1A:4518 Data_1A_4518 ; @data @size=8
 1A:45E5 Data_1A_45E5 ; @data @size=14875
-1B:4000 GFX_TilesetMarioZone1 ; @data
-1B:4600 GFX_TilesetMarioZone2 ; @data
-1B:4C00 GFX_TilesetMarioZone3 ; @data
-1B:5200 GFX_TilesetMarioZone4 ; @data
-1B:5800 GFX_TilesetMarioZoneBoss ; @data
-1B:5E00 GFX_EnemiesMarioZone1 ; @data
-1B:6180 GFX_EnemiesMarioZone2 ; @data
-1B:6500 GFX_EnemiesMarioZone3 ; @data
-1B:6880 GFX_EnemiesMarioZone4 ; @data
-1B:6C00 GFX_EnemiesMarioZoneBoss ; @data
+1B:4000 GFX_TilesetMarioZone1 ; @function
 1B:6F80 Data_1B_6F80 ; @data @size=4224
-1C:4000 GFX_TilesetMacroZone1 ; @data
-1C:4600 GFX_TilesetMacroZone2 ; @data
-1C:4C00 GFX_TilesetMacroZone3 ; @data
-1C:5200 GFX_TilesetMacroZone4 ; @data
-1C:5800 GFX_TilesetMacroZoneBoss ; @data
-1C:5E00 GFX_EnemiesMacroZone1 ; @data
-1C:6180 GFX_EnemiesMacroZone2 ; @data
-1C:6500 GFX_EnemiesMacroZone3 ; @data
-1C:6880 GFX_EnemiesMacroZone4 ; @data
-1C:6C00 GFX_EnemiesMacroZoneBoss ; @data
+1C:4000 GFX_TilesetMacroZone1 ; @function
 1C:6F80 Data_1C_6F80 ; @data @size=4224
-1D:4000 GFX_TilesetTurtleZone1 ; @data
-1D:4600 GFX_TilesetTurtleZone2 ; @data
-1D:4C00 GFX_TilesetTurtleZone3 ; @data
-1D:5200 GFX_TilesetTurtleZoneBoss ; @data
-1D:5800 GFX_EnemiesTurtleZone1 ; @data
-1D:5B80 GFX_EnemiesTurtleZone2 ; @data
-1D:5F00 GFX_EnemiesTurtleZone3 ; @data
-1D:6280 GFX_EnemiesTurtleZoneBoss ; @data
+1D:4000 GFX_TilesetTurtleZone1 ; @function
 1D:6600 Data_1D_6600 ; @data @size=6656
-1E:4000 GFX_TilesetSpaceZone ; @data
-1E:4600 GFX_TilesetPumpkinZoneBoss2 ; @data
-1E:4C00 GFX_TilesetWarioCastle ; @data
-1E:5200 GFX_TilesetWarioRoom ; @data
+1E:4000 GFX_TilesetSpaceZone ; @function
 1E:5800 Data_1E_5800 ; @data @size=512
-1E:5A00 GFX_EnemiesHippoLevel ; @data
-1E:5D80 GFX_EnemiesSpaceZone1 ; @data
-1E:6100 GFX_EnemiesSpaceZone2 ; @data
-1E:6480 GFX_EnemiesSpaceZoneBoss ; @data
 1E:6800 Data_1E_6800 ; @data @size=128
-1E:6880 GFX_EnemiesWarioCastle1 ; @data
-1E:6C00 GFX_EnemiesWarioCastle2 ; @data
-1E:6F80 GFX_EnemiesWario1 ; @data
-1E:7300 GFX_EnemiesWario2 ; @data
 1E:7680 Data_1E_7680 ; @data @size=2432
-1F:4000 GFX_TilesetPumpkinZone1 ; @data
-1F:4600 GFX_TilesetPumpkinZone2 ; @data
-1F:4C00 GFX_TilesetPumpkinZone3 ; @data
-1F:5200 GFX_TilesetPumpkinZone4 ; @data
-1F:5800 GFX_TilesetPumpkinZoneBoss ; @data
-1F:5E00 GFX_EnemiesPumpkinZone1 ; @data
-1F:6180 GFX_EnemiesPumpkinZone2 ; @data
-1F:6500 GFX_EnemiesPumpkinZone3 ; @data
-1F:6880 GFX_EnemiesPumpkinZone4 ; @data
-1F:6C00 GFX_EnemiesPumpkinZoneBoss ; @data
+1F:4000 GFX_TilesetPumpkinZone1 ; @function
+1F:6C00 GFX_EnemiesPumpkinZoneBoss ; @function
 1F:6F80 Data_1F_6F80 ; @data @size=4224

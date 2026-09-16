@@ -52,6 +52,8 @@ WIDTH = 512                 # 32:9
 SKEW = 4                    # host frames of pacing slip tolerated between runs
 
 ATTRACT_PLAY = 1140         # the title demo reaches scrolling gameplay by here
+LONG_FRAMES = 16000         # a full attract cycle, the run that exercises the
+                            # debounce window (see probe_dx_flicker.py)
 
 
 def scanner_trace(probe, frames):
@@ -143,6 +145,36 @@ def run(name, aspect, spawns, frames, route=ROUTE, settle=PLAY_FRAME - 40):
     finally:
         probe.close()
     return trace
+
+
+def long_run(name, spawns, dx):
+    """Free-run a whole attract cycle and QUERY the always-on ledger.
+
+    This is the run that actually exercises the debounce window: the demo
+    changes scene repeatedly, so the gate goes false for runs shorter than six
+    frames and the view stays wide on a frozen world. Nothing is armed and
+    nothing is stepped -- the ledger has been filling since the body booted, so
+    the counts are exact rather than sampled.
+    """
+    probe = Probe(name, aspect="32:9", route="",
+                  env={"SML2_SPAWNS": spawns, "SML2_DX": "1" if dx else "0"})
+    try:
+        while probe.view()["frame"] < LONG_FRAMES:
+            probe.run_to(min(LONG_FRAMES, probe.view()["frame"] + 1000))
+        view = probe.view()
+        ledger = probe.command("sml2_spawn_state")
+        body = probe.command("sml2_mod_state")["body"]
+    finally:
+        probe.close()
+    return dict(body=body, frames=view["frame"], spawns=spawns,
+                debounced=view["debounced"], narrowed=view["narrowed"],
+                pillarbox_model=view["pillarbox_model"], flips=view["flips"],
+                spawn_extend=view["spawn_extend"], spawn_reach=view["spawn_reach"],
+                spawn_reads=view["spawn_reads"], spawn_ungated=view["spawn_ungated"],
+                spawn_unpaired=view["spawn_unpaired"], spawn_resets=view["spawn_resets"],
+                passed=ledger["passed"], spawned=ledger["spawned"],
+                jumped=ledger["jumped"], seek=ledger["seek"],
+                stepped_over=ledger["stepped_over"], scans=ledger["scans"])
 
 
 def summary(trace):
@@ -284,6 +316,50 @@ def main():
     assert attract["original"]["max_spawn_distance"] <= VANILLA_HALF + RAMP, attract
     assert attract["extended"]["ledger_spawned"] >= attract["original"]["ledger_spawned"], attract
     assert attract["extended"]["ledger_jumped"] == attract["original"]["ledger_jumped"] == 0, attract
+
+    # 7. The debounce window. The gate can go false for a few frames at a time
+    #    while the view stays wide on a frozen world (see "The fallback is
+    #    debounced" in ADAPTIVE.md). Pixels may be stale there; a spawn may
+    #    not, because the scanner consumes. Over a whole attract cycle on both
+    #    bodies: the window is genuinely entered, and NOTHING is consumed
+    #    without spawning in either policy.
+    long = {}
+    for body, dx in (("faithful", False), ("dx", True)):
+        for spawns in ("original", "extended"):
+            key = f"{body}-{spawns}"
+            r = long[key] = long_run(f"spawns-long-{key}", spawns, dx)
+            assert r["frames"] >= LONG_FRAMES, (key, r)
+            # `jumped` is NOT the number to assert on over a multi-level run:
+            # every level load makes the cursor seek forward from the list head
+            # to wherever the camera starts, consuming everything behind it, in
+            # vanilla exactly as much as here. The number that matters is the
+            # one the ramp exists to hold down -- entries the edge CROSSED --
+            # and Extended may not have more of them than vanilla does.
+            assert r["seek"] + r["stepped_over"] == r["jumped"], (key, r)
+            # The whole guarantee, over a full attract cycle, in both policies:
+            # the scan edge never crossed a list entry. `jumped` is much larger
+            # and says nothing -- it is dominated by the cursor seeking from the
+            # list head to the camera at every one of the demo's level loads,
+            # which vanilla does too.
+            assert r["stepped_over"] == 0, (
+                key, "the scan edge crossed a list entry", r)
+            assert r["spawn_unpaired"] == 0, (key, r)
+            assert r["pillarbox_model"] == 0, (key, r)
+            if spawns == "original":
+                assert r["spawn_reads"] == [0, 0, 0, 0] and r["spawn_ungated"] == 0, (key, r)
+    results["long"] = long
+    assert any(r["debounced"] > 0 for r in long.values()), (
+        "no debounce window was entered, so this section proved nothing", long)
+    # NOT asserted here: that Extended spawned at least as many records as
+    # Original. The attract demo replays a fixed input script, so the extra
+    # enemies Extended spawns change what the demo Mario runs into and the two
+    # runs end up in different segments of it -- `narrowed` and `flips` differ
+    # too. The superset claim is section 3's, on the controlled single-level
+    # route where both runs see the same world. What this section proves is the
+    # loss metric, which is meaningful however far the runs diverge.
+    for body in ("faithful", "dx"):
+        ext = long[body + "-extended"]
+        assert ext["spawn_reach"][0] > 0, (body, "the ramp never widened", ext)
 
     (ROOT / "logs/spawns-probe-results.json").write_text(json.dumps(results, indent=2))
     print(json.dumps(results, indent=2))

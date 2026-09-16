@@ -298,10 +298,23 @@ static struct {
     unsigned scan_hi[2], scan_lo[2], scan_unpaired, scan_resets;
     unsigned spawn_ungated;   /* builder reads handed back vanilla: !s.valid */
     int spawn_cursor, spawn_level;
+    /* The aligned edge the guest's scanner actually used on the last frame it
+     * scanned in each direction. Pure observation of the ROM, independent of
+     * the policy and of the gate, and the only way to tell the two kinds of
+     * "consumed without spawning" apart. */
+    int scan_seen_edge[2];
     unsigned spawn_passed, spawn_spawned, spawn_jumped, spawn_scans;
+    /* Of the jumped ones: a SEEK is the cursor catching up to a camera it was
+     * far behind -- every level load does it, in vanilla too, and nothing is
+     * lost that the level was ever going to give. A STEPPED-OVER entry lay
+     * between the edge's previous position and this one: the edge crossed it
+     * without landing on it, and it is gone. That second number is the one the
+     * 8 px ramp exists to keep at zero. */
+    unsigned spawn_seek, spawn_stepped;
     uint8_t spawn_list[SML2_SPAWN_LIST_SIZE];
     uint8_t spawn_seen[SML2_SPAWN_RECORDS];   /* 1 spawned, 2 jumped over */
-    struct { int frame, cam_x, edge, x, addr; } spawn_ring[SML2_SPAWN_RING];
+    struct { int frame, cam_x, edge, prev_edge, x, addr, stepped; }
+        spawn_ring[SML2_SPAWN_RING];
     unsigned spawn_ring_n;
     int cam_prev, cam_prev_ok;
     Sml2Sprite sprite[SML2_MAX_SPRITES], build[SML2_MAX_SPRITES];
@@ -894,6 +907,7 @@ static void spawn_account(GBContext *ctx) {
     if (level != s.spawn_level) {
         s.spawn_level = level;
         s.spawn_cursor = -1;
+        s.scan_seen_edge[0] = s.scan_seen_edge[1] = -1;
         memset(s.spawn_seen, 0, sizeof s.spawn_seen);
         spawn_forget();
     }
@@ -906,6 +920,9 @@ static void spawn_account(GBContext *ctx) {
         cursor != s.spawn_cursor && (cursor - s.spawn_cursor) % SML2_SPAWN_RECORD == 0) {
         int step = cursor > s.spawn_cursor ? SML2_SPAWN_RECORD : -SML2_SPAWN_RECORD;
         int n = (cursor - s.spawn_cursor) / step;
+        int dir = step > 0 ? SML2_SIDE_RIGHT : SML2_SIDE_LEFT;
+        int prev_edge = s.scan_seen_edge[dir];
+        s.scan_seen_edge[dir] = edge;
         s.spawn_scans++;
         for (int k = 0; k < n; k++) {
             int addr = s.spawn_cursor + step * k;
@@ -916,14 +933,23 @@ static void spawn_account(GBContext *ctx) {
                 s.spawn_spawned++;
                 s.spawn_seen[off / SML2_SPAWN_RECORD] |= 1u;
             } else {
+                /* Between where this direction's edge was last time and where
+                 * it is now = the edge crossed it. Anything else is the cursor
+                 * seeking to a camera it was behind. */
+                int stepped = prev_edge >= 0 &&
+                              (dir == SML2_SIDE_RIGHT ? (x > prev_edge && x < edge)
+                                                      : (x < prev_edge && x > edge));
                 s.spawn_jumped++;
-                s.spawn_seen[off / SML2_SPAWN_RECORD] |= 2u;
+                if (stepped) s.spawn_stepped++; else s.spawn_seek++;
+                s.spawn_seen[off / SML2_SPAWN_RECORD] |= (uint8_t)(stepped ? 4u : 2u);
                 unsigned slot = s.spawn_ring_n++ % SML2_SPAWN_RING;
                 s.spawn_ring[slot].frame = s.frame;
                 s.spawn_ring[slot].cam_x = s.cam_x;
                 s.spawn_ring[slot].edge = edge;
+                s.spawn_ring[slot].prev_edge = prev_edge;
                 s.spawn_ring[slot].x = x;
                 s.spawn_ring[slot].addr = addr;
+                s.spawn_ring[slot].stepped = stepped;
             }
         }
     }
@@ -1395,6 +1421,7 @@ static void reset(GBContext *ctx) {
     s.extra_left = s.extra_right = 0;
     s.cam_prev_ok = 0;
     s.spawn_cursor = -1;
+    s.scan_seen_edge[0] = s.scan_seen_edge[1] = -1;
     spawn_forget();
 }
 
@@ -1407,6 +1434,7 @@ void sml2_adaptive_init(GBContext *ctx) {
     s.ctx = ctx;
     s.spawn_cursor = -1;
     s.spawn_level = -1;
+    s.scan_seen_edge[0] = s.scan_seen_edge[1] = -1;
     spawn_forget();
     gb_custom_render = NULL;
     gb_custom_snapshot = NULL;
@@ -1688,10 +1716,13 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
             unsigned slot = i % SML2_SPAWN_RING;
             int room = (int)sizeof ring - r - 2;
             int k = snprintf(ring + r, (size_t)(room > 0 ? room : 0),
-                             "%s{\"frame\":%d,\"cam_x\":%d,\"edge\":%d,\"x\":%d,\"a\":%d}",
+                             "%s{\"frame\":%d,\"cam_x\":%d,\"edge\":%d,"
+                             "\"prev_edge\":%d,\"x\":%d,\"a\":%d,\"stepped\":%d}",
                              shown ? "," : "", s.spawn_ring[slot].frame,
                              s.spawn_ring[slot].cam_x, s.spawn_ring[slot].edge,
-                             s.spawn_ring[slot].x, s.spawn_ring[slot].addr);
+                             s.spawn_ring[slot].prev_edge,
+                             s.spawn_ring[slot].x, s.spawn_ring[slot].addr,
+                             s.spawn_ring[slot].stepped);
             if (k < 0 || k >= room) { ring[r] = '\0'; ring_full = 1; break; }
             r += k;
             shown++;
@@ -1700,12 +1731,14 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         ring[r] = '\0';
         gb_debug_server_send_fmt(
             "{\"id\":%d,\"ok\":true,\"extend\":%d,\"level\":%d,\"cursor\":%d,"
-            "\"passed\":%u,\"spawned\":%u,\"jumped\":%u,\"scans\":%u,"
+            "\"passed\":%u,\"spawned\":%u,\"jumped\":%u,\"seek\":%u,"
+            "\"stepped_over\":%u,\"scans\":%u,"
             "\"ungated\":%u,\"records\":%s,\"records_shown\":%d,"
             "\"records_truncated\":%d,\"skips\":%s,\"skips_shown\":%d,"
             "\"skips_truncated\":%d,\"skip_total\":%u}",
             id, s.spawn_extend, s.spawn_level, s.spawn_cursor,
-            s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_scans,
+            s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_seek,
+            s.spawn_stepped, s.spawn_scans,
             s.spawn_ungated, recs, count, recs_full, ring, shown, ring_full,
             s.spawn_ring_n);
         return 1;
@@ -1728,6 +1761,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
         "\"spawn_unpaired\":%u,\"spawn_resets\":%u,\"spawn_cursor\":%d,"
         "\"spawn_passed\":%u,\"spawn_spawned\":%u,\"spawn_jumped\":%u,"
+        "\"spawn_seek\":%u,\"spawn_stepped_over\":%u,"
         "\"spawn_scans\":%u,\"spawn_ungated\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
@@ -1746,7 +1780,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.scan_hi[SML2_SIDE_RIGHT], s.scan_lo[SML2_SIDE_RIGHT],
         s.scan_hi[SML2_SIDE_LEFT], s.scan_lo[SML2_SIDE_LEFT],
         s.scan_unpaired, s.scan_resets, s.spawn_cursor,
-        s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_scans,
-        s.spawn_ungated, s.frame);
+        s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_seek,
+        s.spawn_stepped, s.spawn_scans, s.spawn_ungated, s.frame);
     return 1;
 }

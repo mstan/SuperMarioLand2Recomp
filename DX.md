@@ -72,7 +72,7 @@ identical before and after the engine change).
 |---|---|---|
 | `[rom] symbol_prefix` | either | namespace for every emitted global; empty = the output prefix |
 | `[rom] patch_file` | DX | BPS applied to `path` at generation, and in memory at boot |
-| `[rom] dispatch_manifest` | DX | this body's own Tier-0 seed manifest |
+| `[options] dispatch_misses` | DX | this body's own Tier-0 seed manifest (pre-existing key; reused, not re-invented) |
 | `[options] body_only` | DX | library body: no `main()`, no CMake project, namespaced symbols, emits `<prefix>_body.cmake` |
 | `[options] multi_body` | faithful | primary project: `main()` boots whichever body `game_select_body()` returns |
 | `[options] emit_main` | — | standalone override for the `main()` wrapper |
@@ -109,23 +109,37 @@ selection changed"; the body that actually boots is always correct.
 
 ## Adaptive widescreen × DX
 
-Widescreen composes the margins itself, from the level's block map, with the
-monochrome tile model: it snapshots VRAM bank 0 only and draws every margin
-cell through BG palette 0. That is exactly right on the faithful DMG body and
-wrong on DX, whose cart header says `0xC0` — CGB-only, with per-tile attribute
-bytes (palette number, VRAM bank, flips, priority) in VRAM bank 1. The native
-160 columns would be in full colour and the synthesised margins beside them
-would not.
+**The geometry works on DX. The colour does not.** Measured, not assumed: with
+the draw-bank binding below fixed and the gate temporarily lifted, the DX body
+reaches gameplay (`$FF9B` mode 4) at 32:9 and the compositor's block-map decode
+reproduces the game's own BG tilemap **378/378 cells** — the same score the
+faithful body gets.
 
-So the two mods are mutually exclusive today, stated in the launcher rather
-than discovered after Play: with DX color on, the Adaptive widescreen row shows
-"Unavailable while DX color is on…" in the warning colour, and
-`sml2_adaptive_init()` refuses to install the compositor. Lifting it needs the
-margin renderer to snapshot both VRAM banks and honour the attribute byte per
-cell — see `sml2_adaptive.c`'s bindings table for the exact list.
+| run | body | model | width | valid | block-map score |
+|---|---|---|---|---|---|
+| widescreen, DX off | `Super_Mario_Land_2` | dmg | 512 | 1 | 378 / 378 |
+| widescreen, DX on | `Super_Mario_Land_2_DX` | cgb | 512 | 1 | **378 / 378** |
 
-Everything *else* in the compositor is already body-correct. The one binding the
-hack moved is the actor draw routine:
+What is missing is colour. The DX cart header says `0xC0` at `0x143`: a CGB-only
+cart whose background cells carry an attribute byte (palette number, VRAM bank,
+flips, priority). The compositor snapshots VRAM bank 0 only and draws every
+margin cell through BG palette 0 — right on a DMG cart, wrong on a CGB one. The
+native 160 columns would be in full colour and the synthesised margins beside
+them would not, which is worse than not widening.
+
+Closing it is not a mechanical port. Margins are synthesised from the **level's
+block map**, not from the hardware BG map, so a margin cell has no attribute
+byte to read; the four-byte block definitions at `$A600` are tile indices only.
+Someone has to find where the hack stores per-block colour first.
+
+So the two mods are mutually exclusive today, and that is stated in the launcher
+rather than discovered after Play: with DX color on, the Adaptive widescreen row
+shows "Unavailable while DX color is on…" in the warning colour, and
+`sml2_adaptive_init()` refuses to install the compositor.
+
+### Bindings, V1.0 vs DX
+
+The one binding the hack moved is the actor draw routine:
 
 | Binding | V1.0 | DX v1.8.1 |
 |---|---|---|
@@ -144,13 +158,13 @@ per-body table is only a sanity gate on which banks may host it at all.
 
 ## Known gaps
 
-1. **The DX body has not been booted.** It hangs at boot (interpreted loop
-   `24:7875` ↔ `00:38B3`); a separate fix is in flight. Everything here is
-   verified structurally — the body links, registers, and is selected — but no
-   DX frame has been rendered through this seam.
-2. **Widescreen on DX** is gated off, as above.
-3. **`dispatch_misses_dx.toml` is empty.** The DX body has no Tier-0 seeds yet;
-   harvest them against the DX body once it boots. Do **not** reuse the faithful
-   body's manifest — the hack relocates code.
-4. **`recomp/sml2_v10.sym` is faithful-only.** The disassembly targets V1.0; the
-   DX config deliberately omits `symbols`.
+1. **Widescreen on DX is gated off for colour**, as measured above. The geometry
+   is proven; the per-block colour source in the hack is unidentified.
+2. **Branding lags one launch** (above).
+3. **`recomp/sml2_v10.sym` is faithful-only.** The disassembly targets the
+   unpatched V1.0; the DX config deliberately omits `symbols`.
+4. **The pre-patched DX image is not accepted as a user ROM.** The body already
+   skips its patch step when handed an image that is already the expected one
+   (`launcher_image_matches_sha256`), so this is one CRC away in
+   `game_get_valid_crcs()` — deliberately not taken, to keep "one supported
+   cart" true.

@@ -5,8 +5,35 @@ instead of the Game Boy's 160x144 crop. The emulated hardware stays native: the
 PPU still renders 160x144, the save-state layout is unchanged, and with the mod
 off the executable is byte-for-byte the faithful build.
 
-Supported ROM: **Super Mario Land 2 - 6 Golden Coins (UE) (V1.2)**, CRC32
-`0x635A9112`. Every address below was verified against that ROM.
+Supported ROM: **Super Mario Land 2 - 6 Golden Coins (UE) (V1.0)**, CRC32
+`0xD5EC24E4` — the one cart this project asks for. Every address below was
+re-verified byte-for-byte against V1.0 after the re-base from V1.2, and against
+the SML2 DX v1.8.1 image the DX body runs.
+
+Only one binding moved between the three images, and only one of those moves
+matters to this module:
+
+* `SetScroll` sits at `00:2062` in V1.0 and in DX; V1.2 had it at `00:2065`
+  (bank 0 of V1.2 is V1.0 shifted `+3` over file `0x0049C–0x0383D`). It is cited
+  below for provenance only — no code here binds to that address.
+* The **actor draw routine** is in bank 3 on V1.0 but relocated on DX: the hack
+  replaces the literal bank select at `00:3C80` with a dispatcher at `00:07EA`
+  returning bank `0x23`/`0x28`/`0x3A` from `$A269`. `sml2_adaptive.c` therefore
+  follows the LIVE `ctx->rom_bank` inside the tap rather than a compile-time
+  `3`; the per-body `draw_banks[]` table is only a sanity gate.
+
+Every other constant — the block map, block definitions, scroll boxes, camera,
+activation/cull windows, the `$FFE2` tap and the `$A2B1` override — is at the
+same address with the same bytes in V1.0 and in DX.
+
+## Bodies
+
+The executable carries two recompiled bodies (see `DX.md`). This mod is
+available on the **faithful** body only. The geometry is proven on DX — with the
+gate lifted, the DX body scores the same 378/378 block-map match at 32:9 — but
+the margins are composed with the monochrome tile model and DX is a CGB-only
+cart, so the synthesised margins would not match the colour the hardware drew.
+The launcher says so on the Adaptive widescreen row when DX color is on.
 
 ## Run
 
@@ -99,7 +126,7 @@ attaches.
 |---|---|---|
 | Camera centre X | `$FFCA`/`$FFCB` (16-bit LE) | screen left = camX − 80 |
 | Camera centre Y | `$FFC8`/`$FFC9` | screen top = camY − 72 |
-| `SetScroll` | `00:2065` | writes `sScrollY $A2B0 = camY−72−shake`, `sScrollX $A2B1 = camX−80`; VBlank `00:0154` copies them to SCY/SCX |
+| `SetScroll` | `00:2062` | writes `sScrollY $A2B0 = camY−72−shake`, `sScrollX $A2B1 = camX−80`; VBlank `00:0154` copies them to SCY/SCX |
 | Mario world X/Y | `$FFC2`/`$FFC3`, `$FFC0`/`$FFC1` | — |
 | Level block map | `$B000`–`$DFFF` | `MEM[$B000 + ((wy>>4)&0xFF)*0x100 + ((wx>>4)&0xFF)]`, 256x48 blocks = 4096x768 px, IDs 0..127, mutated live |
 | Block map loader | `00:0361` → `00:0386` | RLE (bit 7 = run flag) from the map bank named by level header byte `$0D`; expands to exactly `0x3000` bytes |
@@ -150,8 +177,8 @@ Status bar columns: 0 life icon, 1 `x`, 2-3 lives, 4 blank, 5 coin icon, 6 `x`,
 |---|---|---|---|
 | `$AF0A`–`$AF0D` | read override | bank 2, PC `$3CAA`/`$3CAB` | activation window becomes camX ± (`$60` + that side's view margin) |
 | `$AF1A`–`$AF1D` | read override | bank 2, PC `$3CAA`/`$3CAB` | cull window becomes camX ± (`$A0` + that side's view margin) |
-| `$A2B1` | read override | bank 3, PC `$409E` | an actor whose true offset from the native screen is outside `[−8, 176)` is handed a scroll shadow that puts it at screen X `$B8`, so the ROM's own `03:4025` drops it |
-| `$FFE2` | read tap | bank 3, PC `$401B` | captures the metasprite in world coordinates after the ROM's state/visibility gates and before its clipping |
+| `$A2B1` | read override | draw bank (3 on V1.0), PC `$409E` | an actor whose true offset from the native screen is outside `[−8, 176)` is handed a scroll shadow that puts it at screen X `$B8`, so the ROM's own `03:4025` drops it |
+| `$FFE2` | read tap | draw bank (3 on V1.0), PC `$401B` | captures the metasprite in world coordinates after the ROM's state/visibility gates and before its clipping |
 
 The third hook is what makes the second one safe. `03:409F` computes screen X
 modulo 256, so an actor the widened activation keeps alive far off the native

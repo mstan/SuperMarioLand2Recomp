@@ -1,10 +1,12 @@
 /*
  * sml2_map.h -- host clone of Super Mario Land 2's block-map decode.
  *
- * Every constant here was verified against the UE V1.2 ROM (CRC32 0x635A9112)
- * and re-confirmed against live RAM through the TCP debug server: decoding the
- * visible 21x18 tile grid out of the block map reproduced the game's own BG
- * tilemap 378/378 cells on four independent gameplay frames.
+ * Every constant here was verified against the UE V1.0 ROM (CRC32 0xD5EC24E4)
+ * -- and against the SML2 DX v1.8.1 image the DX body runs, where all of them
+ * are at the same address with the same bytes -- then re-confirmed against live
+ * RAM through the TCP debug server: decoding the visible 21x18 tile grid out of
+ * the block map reproduced the game's own BG tilemap 378/378 cells on both
+ * bodies.
  *
  *   block map     MEM[$B000 + ((worldY>>4)&0xFF)*0x100 + ((worldX>>4)&0xFF)]
  *                 $B000-$BFFF is cart SRAM, $C000-$DFFF is WRAM; the level is
@@ -30,7 +32,8 @@
 #define SML2_BLOCKDEF_SIZE 0x200u
 #define SML2_MAX_BLOCK_ID  0x7Fu     /* bit 7 is the level RLE flag           */
 
-/* Camera is the screen CENTRE (ROM0 SetScroll $2065 writes SCX = camX-80 and
+/* Camera is the screen CENTRE (ROM0 SetScroll $2062 on V1.0 and DX -- $2065 on
+ * the V1.2 this project no longer targets -- writes SCX = camX-80 and
  * SCY = camY-72-shake), 16-bit little endian in HRAM. */
 #define SML2_CAM_Y         0xFFC8u
 #define SML2_CAM_X         0xFFCAu

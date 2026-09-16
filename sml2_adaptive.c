@@ -140,17 +140,28 @@ static uint8_t rom_byte(GBContext *ctx, int bank, unsigned addr) {
  *    the metasprite fetches follow the live bank. draw_banks[] below is only a
  *    sanity gate on which banks may host that routine at all.
  *
- * 2. Margin composition on DX. The DX cart header says 0xC0 at 0x143 -- it is a
- *    CGB-only cart, and its background tiles carry CGB attribute bytes (palette
- *    number, VRAM bank, flips, priority) in VRAM bank 1. This compositor
- *    snapshots VRAM bank 0 only (memcpy of VRAM_SIZE = 0x2000) and draws every
- *    margin BG cell through BG palette 0, which is correct on a DMG cart and
- *    wrong on a CGB one: the native 160 columns would be in full colour and the
- *    synthesised margins beside them would not. That is a genuine layout change
- *    in the hack, not a relocated constant, so margins stay off for the DX body
- *    and the Mods page says so. Turning them on needs: snapshot both VRAM
- *    banks, read the attribute byte per margin cell, honour its palette number
- *    / bank bit / flips in bg_row() and the HUD path. See DX.md.
+ * 2. Margin composition on DX -- gated off, and NOT because the geometry fails.
+ *    Measured: with the draw-bank binding above fixed and the gate temporarily
+ *    lifted, the DX body reaches gameplay (mode 4) at 32:9 and the block-map
+ *    decode reproduces the game's own BG tilemap 378/378 cells, exactly as on
+ *    the faithful body. Every geometric binding -- block map, block defs,
+ *    scroll boxes, camera, activation/cull windows, the actor tap -- is correct
+ *    on DX.
+ *
+ *    What is missing is COLOUR. The DX cart header says 0xC0 at 0x143: it is a
+ *    CGB-only cart whose background cells carry an attribute byte (palette
+ *    number, VRAM bank, flips, priority). This compositor snapshots VRAM bank 0
+ *    only (memcpy of VRAM_SIZE = 0x2000) and draws every margin BG cell through
+ *    BG palette 0 -- right on a DMG cart, wrong on a CGB one. The native 160
+ *    columns would be in full colour and the synthesised margins beside them
+ *    would not, which is worse than not widening at all.
+ *
+ *    Closing it is not a mechanical port: margins are synthesised from the
+ *    LEVEL'S BLOCK MAP, not from the hardware BG map, so a margin cell has no
+ *    attribute byte to read. Someone has to find where the hack stores per-block
+ *    colour (it is not in the four-byte block defs at $A600, which are tile
+ *    indices only) before bg_row() and the HUD path can honour it. Until then
+ *    the Mods page says so rather than letting the player discover it. See DX.md.
  */
 typedef struct {
     const char *body_id;        /* GBBody::id; NULL terminates the table       */

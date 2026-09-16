@@ -33,6 +33,10 @@ class Probe:
         (self.folder / "logs").mkdir(parents=True, exist_ok=True)
         self.exe = self.folder / EXE.name
         shutil.copy2(EXE, self.exe)
+        # The DX body derives its image from this at boot; stage it so a
+        # probe can select either body (see tools/probe_dx.py).
+        if (EXE.parent / "sml2dx_v181.bps").exists():
+            shutil.copy2(EXE.parent / "sml2dx_v181.bps", self.folder / "sml2dx_v181.bps")
         (self.folder / "rom.cfg").write_text(str(next((ROOT / "roms").glob("*.gb"))))
         port_socket = socket.socket()
         port_socket.bind(("127.0.0.1", 0))

@@ -99,7 +99,10 @@
  * $AF22 must never be read as "did it scan". */
 #define SML2_SCAN_DIR        0xAF22u
 #define SML2_SPAWN_CURSOR    0xAF1Eu   /* big-endian pointer into the list     */
-#define SML2_SPAWN_LIST      0xAB00u   /* $AB00 is six $FF bytes: the left stop */
+/* The spawn list is built in cart RAM at level load and the cursor is seeded to
+ * $AB06 at 02:69AD, 02:6C76 and 03:6C4B (same three sites, same bytes, on both
+ * images). $AB00 holds six $FF bytes so a backward scan stops there. */
+#define SML2_SPAWN_LIST      0xAB00u
 #define SML2_SPAWN_LIST_SIZE 0x200u
 #define SML2_SPAWN_RECORD    6         /* X hi, X lo, flags, then 3 payload    */
 /* +1: the last record that can start inside the region begins at offset 510,

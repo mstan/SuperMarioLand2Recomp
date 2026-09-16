@@ -24,3 +24,6 @@ logs_*.log
 # python probe bytecode
 __pycache__/
 *.pyc
+generated_dx/
+_symtest_*/
+_symtest_*.toml

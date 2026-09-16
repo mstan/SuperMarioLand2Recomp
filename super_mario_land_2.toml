@@ -1,13 +1,23 @@
-# Super Mario Land 2 - 6 Golden Coins (UE) (V1.2) - Game Boy Static Recompiler Configuration
+# Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) — faithful body.
+#
+# V1.0 is the ONE ROM this project asks the user for (CRC32 D5EC24E4). The DX
+# body (super_mario_land_2_dx.toml) is derived from the very same file by the
+# SML2 DX v1.8.1 BPS, applied in memory at boot — so there is exactly one
+# supported cart and exactly one CRC in the launcher gate.
+#
 # Used with: gbrecomp --config super_mario_land_2.toml
 
 [rom]
-path = "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.2) [!].gb"
+path = "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
 output_dir = "generated"
 runtime_dir = "../gb-recompiled/runtime"
-valid_crcs = [0x635A9112]
+valid_crcs = [0xD5EC24E4]
 output_prefix = "Super_Mario_Land_2"
 
 [options]
 aggressive_scan = true
 emit_comments = true
+# This tree is the primary project of a two-body executable: its main() boots
+# whichever body the launcher's Mods page selected. See DX.md and
+# gb-recompiled/runtime/include/gb_body.h.
+multi_body = true

@@ -14,6 +14,7 @@
 #include "sml2_adaptive.h"
 #include "sml2_mods.h"
 #include "sml2_map.h"
+#include "gb_body.h"
 #include "gb_custom_view.h"
 #include "gbrt.h"
 #include "ppu.h"
@@ -46,7 +47,7 @@
 #define SML2_ACTORS          0xAD00u
 #define SML2_ACTOR_STRIDE    0x20u
 #define SML2_ACTOR_SLOTS     16
-#define SML2_DRAW_BANK       3
+#define SML2_DRAW_BANK       3   /* faithful V1.0; DX relocates -- see bindings below */
 #define SML2_SPRITE_TABLE    0x40B1u
 #define SML2_SPRITE_TABLE_ALT 0x4F11u
 #define SML2_SPRITE_TABLE_SEL 0xAF06u
@@ -118,6 +119,82 @@ static uint8_t rom_byte(GBContext *ctx, int bank, unsigned addr) {
     unsigned o = (unsigned)bank * 0x4000u + (addr - 0x4000u);
     if (addr < 0x4000u || addr >= 0x8000u) return 0;
     return ctx->rom && o < ctx->rom_size ? ctx->rom[o] : 0;
+}
+
+/* ---- per-body ROM bindings -------------------------------------------------
+ *
+ * Every constant above was verified byte-for-byte on Super Mario Land 2 (UE)
+ * V1.0 (CRC32 D5EC24E4) AND on the DX v1.8.1 image (F0799017) -- same address,
+ * same bytes -- with two exceptions, both recorded here rather than in prose:
+ *
+ * 1. The actor draw routine. V1.0 selects bank 3 with a literal at 00:3C80
+ *    (3E 03 / EA 4E A2 / EA 00 21 / CD 00 40). DX deletes that literal and
+ *    calls a dispatcher at 00:07EA that returns bank 0x23, 0x28 or 0x3A from
+ *    $A269, then calls $4000 in whichever bank it picked; the 32-byte draw
+ *    entry signature occurs once in V1.0 (03:4000) and four times in DX
+ *    (03:4000, 35:4000, 40:4000, 58:4000). The metasprite tables keep their
+ *    addresses ($40B1 / $4F11) and all 168 entries still point inside
+ *    $4000-$7FFF, so only the BANK moves. The fix is not a bigger constant, it
+ *    is to stop using one: the tap only fires while the CPU is executing the
+ *    draw routine, so the routine's bank is ctx->rom_bank at that instant, and
+ *    the metasprite fetches follow the live bank. draw_banks[] below is only a
+ *    sanity gate on which banks may host that routine at all.
+ *
+ * 2. Margin composition on DX. The DX cart header says 0xC0 at 0x143 -- it is a
+ *    CGB-only cart, and its background tiles carry CGB attribute bytes (palette
+ *    number, VRAM bank, flips, priority) in VRAM bank 1. This compositor
+ *    snapshots VRAM bank 0 only (memcpy of VRAM_SIZE = 0x2000) and draws every
+ *    margin BG cell through BG palette 0, which is correct on a DMG cart and
+ *    wrong on a CGB one: the native 160 columns would be in full colour and the
+ *    synthesised margins beside them would not. That is a genuine layout change
+ *    in the hack, not a relocated constant, so margins stay off for the DX body
+ *    and the Mods page says so. Turning them on needs: snapshot both VRAM
+ *    banks, read the attribute byte per margin cell, honour its palette number
+ *    / bank bit / flips in bg_row() and the HUD path. See DX.md.
+ */
+typedef struct {
+    const char *body_id;        /* GBBody::id; NULL terminates the table       */
+    const uint8_t *draw_banks;  /* banks that may host the actor draw routine  */
+    int draw_bank_count;
+    int margins_supported;      /* 0 -> compose nothing, stay at native width  */
+    const char *margin_note;    /* shown on the Mods page when not supported   */
+} Sml2Bindings;
+
+static const uint8_t k_draw_banks_faithful[] = { 3 };
+static const uint8_t k_draw_banks_dx[] = { 3, 35, 40, 58 };
+
+static const Sml2Bindings k_bindings[] = {
+    { SML2_BODY_FAITHFUL, k_draw_banks_faithful,
+      (int)(sizeof k_draw_banks_faithful), 1, NULL },
+    { SML2_BODY_DX, k_draw_banks_dx,
+      (int)(sizeof k_draw_banks_dx), 0,
+      "Unavailable while DX color is on: the wide margins are composed with the "
+      "monochrome tile model, so they would not match the DX palettes." },
+    { NULL, NULL, 0, 1, NULL },
+};
+
+static const Sml2Bindings *bindings_for(const char *body_id) {
+    if (!body_id) body_id = gb_body_active_id();
+    if (body_id) {
+        for (const Sml2Bindings *b = k_bindings; b->body_id; b++) {
+            if (!strcmp(b->body_id, body_id)) return b;
+        }
+    }
+    return &k_bindings[0];
+}
+
+static const Sml2Bindings *bindings(void) { return bindings_for(NULL); }
+
+const char *sml2_adaptive_margin_note(const char *body_id) {
+    return bindings_for(body_id)->margin_note;
+}
+
+/* Can the actor draw routine legitimately be running out of this bank? */
+static int is_draw_bank(unsigned bank) {
+    const Sml2Bindings *b = bindings();
+    for (int i = 0; i < b->draw_bank_count; i++)
+        if (b->draw_banks[i] == bank) return 1;
+    return 0;
 }
 
 /* ---- palettes: mirror ppu.c so the margins match the native strip ---- */
@@ -267,27 +344,33 @@ static void capture_actor(GBContext *ctx) {
     uint8_t flip = (uint8_t)(peek(ctx, 0xFFDCu) ^ peek(ctx, 0xFFDDu) ^ peek(ctx, 0xFFDEu));
     unsigned table = peek(ctx, SML2_SPRITE_TABLE_SEL) ? SML2_SPRITE_TABLE_ALT : SML2_SPRITE_TABLE;
     unsigned entry = table + idx * 2u;
-    unsigned de = (unsigned)rom_byte(ctx, SML2_DRAW_BANK, entry) |
-                  ((unsigned)rom_byte(ctx, SML2_DRAW_BANK, entry + 1) << 8);
+    /* The metasprite tables live in the SAME bank as the draw routine that is
+     * executing right now -- bank 3 on the faithful body, one of 35/40/58 on
+     * DX. read_tap() has already established we are inside that routine, so
+     * ctx->rom_bank is that bank; a compile-time 3 would read the wrong bank's
+     * table on DX. */
+    int draw_bank = (int)ctx->rom_bank;
+    unsigned de = (unsigned)rom_byte(ctx, draw_bank, entry) |
+                  ((unsigned)rom_byte(ctx, draw_bank, entry + 1) << 8);
     if (de < 0x4000u || de >= 0x8000u) return;
     for (int n = 0; n < SML2_MAX_PIECES && de + 3 < 0x8000u; n++, de += 4) {
-        uint8_t yraw = rom_byte(ctx, SML2_DRAW_BANK, de);
+        uint8_t yraw = rom_byte(ctx, draw_bank, de);
         if (yraw == SML2_FRAME_HIDDEN) break;
-        uint8_t xraw = rom_byte(ctx, SML2_DRAW_BANK, de + 1);
+        uint8_t xraw = rom_byte(ctx, draw_bank, de + 1);
         int yoff = (flip & 0x40u) ? (int8_t)(uint8_t)((~yraw & 0xFFu) - 7) : (int8_t)yraw;
         int xoff = (flip & 0x20u) ? (int8_t)(uint8_t)((~xraw & 0xFFu) - 7) : (int8_t)xraw;
         if (s.build_count >= SML2_MAX_SPRITES) break;
         Sml2Sprite *sp = &s.build[s.build_count++];
         sp->x = ax + xoff;
         sp->y = ay + yoff;
-        sp->tile = rom_byte(ctx, SML2_DRAW_BANK, de + 2);
-        sp->attr = (uint8_t)(rom_byte(ctx, SML2_DRAW_BANK, de + 3) ^ flip);
+        sp->tile = rom_byte(ctx, draw_bank, de + 2);
+        sp->attr = (uint8_t)(rom_byte(ctx, draw_bank, de + 3) ^ flip);
         s.captures++;
     }
 }
 
 static void read_tap(GBContext *ctx, uint16_t address) {
-    if (address != SML2_TAP_ADDR || ctx->rom_bank != SML2_DRAW_BANK) return;
+    if (address != SML2_TAP_ADDR || !is_draw_bank(ctx->rom_bank)) return;
     if (ctx->pc != SML2_TAP_PC && ctx->pc != SML2_TAP_PC - 2) return;
     if (!s.valid || gb_custom_width <= GB_SCREEN_WIDTH) return;
     capture_actor(ctx);
@@ -331,7 +414,7 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
         }
     }
 
-    if (address == SML2_SCX_SHADOW && ctx->rom_bank == SML2_DRAW_BANK &&
+    if (address == SML2_SCX_SHADOW && is_draw_bank(ctx->rom_bank) &&
         (pc == SML2_SCX_PC || pc == SML2_SCX_PC - 3)) {
         int ax = (peek(ctx, 0xFFD0u) << 8) | peek(ctx, 0xFFD1u);
         int rel = ax - s.left;
@@ -556,6 +639,14 @@ void sml2_adaptive_init(GBContext *ctx) {
 
     const SML2ModSettings *mods = sml2_mod_settings();
     if (!mods->widescreen) return;
+    if (!bindings()->margins_supported) {
+        /* The body that actually booted cannot be composed wide. Stay at the
+         * native 160 rather than synthesise margins that would not match it;
+         * the Mods page already said so (sml2_adaptive_margin_note). */
+        fprintf(stderr, "[ADAPTIVE] %s
+", bindings()->margin_note);
+        return;
+    }
     gb_custom_requested_width = mods->width;
     gb_custom_render = render;
     gb_custom_snapshot = snapshot;

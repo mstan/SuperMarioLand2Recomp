@@ -1,10 +1,16 @@
 /* Built-in feature provider for the shared recomp-ui pre-boot launcher.
  *
- * Structured as a table of packages rather than a hard-coded index 0, so a
- * second package (a future "DX color" mod) is a row here plus its own option
- * block -- no change to the provider plumbing.
+ * Structured as a table of packages rather than a hard-coded index 0, so each
+ * package is a row here plus its own option block -- no change to the provider
+ * plumbing. Two packages today:
+ *
+ *   Adaptive widescreen  presentation only; works for either body.
+ *   DX color             picks WHICH recompiled body boots. Off = the faithful
+ *                        V1.0 build; on = Super Mario Land 2 DX v1.8.1, derived
+ *                        from the same V1.0 ROM in memory at boot. See DX.md.
  */
 #include "sml2_mods.h"
+#include "sml2_adaptive.h"
 #include "recomp_launcher.h"
 #include <SDL.h>
 #include <stdio.h>
@@ -18,8 +24,9 @@
 #define AUTHOR "Super Mario Land 2 Recomp contributors"
 #define CONFIG_NAME "sml2-mods.ini"
 #define ENV_WIDESCREEN "SML2_WIDESCREEN"
+#define ENV_DX "SML2_DX"
 
-enum { PKG_WIDESCREEN = 0, PKG_COUNT };
+enum { PKG_WIDESCREEN = 0, PKG_DX, PKG_COUNT };
 
 typedef struct {
     const char *package_id;
@@ -42,6 +49,18 @@ static const Sml2Package packages[PKG_COUNT] = {
         "status bar to the window edges. The emulated hardware stays native.",
         1,
     },
+    [PKG_DX] = {
+        "sml2-dx-color", "dx-color", "DX color",
+        "Presentation",
+        "Run Super Mario Land 2 DX v1.8.1 by toruzz: the whole game in Game Boy "
+        "Color, rebuilt from your own ROM at launch.",
+        "Switches which recompiled build boots. Off, the game runs faithfully -- "
+        "the original 1992 monochrome Game Boy release, untouched. On, the DX "
+        "patch is applied to your ROM in memory at boot and the Game Boy Color "
+        "build runs instead. Your ROM file is never modified, and each build "
+        "keeps its own save.",
+        0,
+    },
 };
 
 static const char *const aspects[] = { "Fit", "16:9", "21:9", "32:9" };
@@ -50,17 +69,18 @@ static const int widths[] = { -1, 256, 336, 512 };
 
 static SML2ModSettings settings;
 static int loaded;
-static char config_path[1024], error[160];
+static char config_path[1024], base_dir[1024], error[160];
 
 static int valid_width(int width) { return width == -1 || (width >= 160 && width <= 4096); }
 
 static void load(const char *base) {
     if (loaded) return;
     loaded = 1;
-    settings = (SML2ModSettings){ 0, -1 };
-    snprintf(config_path, sizeof(config_path), "%s%s" CONFIG_NAME, base ? base : "",
+    settings = (SML2ModSettings){ 0, -1, 0 };
+    snprintf(base_dir, sizeof(base_dir), "%s%s", base ? base : "",
              base && base[0] && base[strlen(base) - 1] != '/' && base[strlen(base) - 1] != '\\'
                  ? "/" : "");
+    snprintf(config_path, sizeof(config_path), "%s" CONFIG_NAME, base_dir);
     FILE *f = fopen(config_path, "r");
     if (f) {
         char line[256], key[64];
@@ -70,6 +90,7 @@ static void load(const char *base) {
             if (!strcmp(key, "AdaptiveWidescreen") && (value == 0 || value == 1))
                 settings.widescreen = value;
             if (!strcmp(key, "Width") && valid_width(value)) settings.width = value;
+            if (!strcmp(key, "DX") && (value == 0 || value == 1)) settings.dx = value;
         }
         fclose(f);
     }
@@ -92,6 +113,21 @@ static void load(const char *base) {
             }
         }
     }
+    const char *dx = getenv(ENV_DX);
+    if (dx && dx[0]) settings.dx = atoi(dx) != 0;
+}
+
+/* The DX body derives its image from the user's ROM with this BPS at boot; with
+ * the file missing there is nothing to boot, so the toggle must not be honoured
+ * and the launcher has to say why. */
+int sml2_dx_patch_available(void) {
+    if (!loaded) (void)sml2_mod_settings();
+    char path[1200];
+    snprintf(path, sizeof(path), "%s" SML2_DX_PATCH_FILE, base_dir);
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
 }
 
 const SML2ModSettings *sml2_mod_settings(void) {
@@ -119,6 +155,7 @@ static int feature_index(const char *package_id, const char *feature_id) {
 static int package_enabled(int i) {
     switch (i) {
         case PKG_WIDESCREEN: return settings.widescreen;
+        case PKG_DX:         return settings.dx;
         default: return 0;
     }
 }
@@ -126,6 +163,7 @@ static int package_enabled(int i) {
 static void package_set_enabled(int i, int enabled) {
     switch (i) {
         case PKG_WIDESCREEN: settings.widescreen = enabled != 0; break;
+        case PKG_DX:         settings.dx = enabled != 0; break;
         default: break;
     }
 }
@@ -160,7 +198,38 @@ static int feature_get(void *ctx, int index, RecompLauncherCModFeature *out) {
     COPY(out->group, p->group);
     COPY(out->author, AUTHOR);
     COPY(out->description, p->feature_description);
-    COPY(out->status, package_enabled(index) ? "Enabled" : "Disabled");
+    if (index == PKG_WIDESCREEN) {
+        /* The wide margins are composed per body; the DX body cannot take them
+         * (see sml2_adaptive.c's bindings table). Say so here, against the body
+         * the player has currently chosen, rather than silently rendering
+         * native-width after Play. */
+        const char *blocked = sml2_adaptive_margin_note(
+            settings.dx ? SML2_BODY_DX : SML2_BODY_FAITHFUL);
+        if (blocked) {
+            COPY(out->status, blocked);
+            out->has_error = 1;
+        } else {
+            COPY(out->status, package_enabled(index) ? "Enabled" : "Disabled");
+        }
+    } else if (index == PKG_DX) {
+        /* The one place the launcher tells the player which build will boot,
+         * and the only place a missing patch file can be reported before Play
+         * (recomp-ui draws feature.status unconditionally in the detail pane,
+         * in the warning colour when has_error is set). */
+        if (!sml2_dx_patch_available()) {
+            COPY(out->status, "Unavailable: " SML2_DX_PATCH_FILE " is missing next to the "
+                              "executable. The faithful build will run.");
+            out->has_error = 1;
+        } else if (package_enabled(index)) {
+            COPY(out->status, "On: boots Super Mario Land 2 DX v1.8.1, patched from your "
+                              "ROM in memory. Separate save file.");
+        } else {
+            COPY(out->status, "Off: the game runs faithfully, as the original monochrome "
+                              "Game Boy release.");
+        }
+    } else {
+        COPY(out->status, package_enabled(index) ? "Enabled" : "Disabled");
+    }
     out->enabled = package_enabled(index);
     out->option_count = p->option_count;
     return 1;
@@ -251,15 +320,22 @@ static int package_set_option(void *ctx, const char *package_id, const char *opt
     return set_option(ctx, package_id, packages[pkg].feature_id, option, value);
 }
 
+/* Called when the player presses Play, with the ROM the launcher resolved.
+ * Returning 0 cancels the launch and surfaces last_error() on the Mods page. */
 static int commit(void *ctx, const char *image) {
     (void)ctx;
     (void)image;
     error[0] = 0;
+    if (settings.dx && !sml2_dx_patch_available()) {
+        COPY(error, "DX color needs " SML2_DX_PATCH_FILE " next to the executable. "
+                    "Turn DX color off to play the faithful build.");
+        return 0;
+    }
     char temporary[1050];
     snprintf(temporary, sizeof(temporary), "%s.tmp", config_path);
     FILE *f = fopen(temporary, "w");
-    int ok = f && fprintf(f, "[Mods]\nAdaptiveWidescreen=%d\nWidth=%d\n",
-                          settings.widescreen, settings.width) > 0;
+    int ok = f && fprintf(f, "[Mods]\nAdaptiveWidescreen=%d\nWidth=%d\nDX=%d\n",
+                          settings.widescreen, settings.width, settings.dx) > 0;
     if (f && fclose(f) != 0) ok = 0;
     if (ok) {
 #ifdef _WIN32

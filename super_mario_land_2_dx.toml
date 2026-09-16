@@ -1,0 +1,27 @@
+# Super Mario Land 2 DX v1.8.1 (toruzz) — DX colour body.
+#
+# Same source ROM as the faithful body: V1.0 (UE), CRC32 D5EC24E4. The image
+# actually recompiled here is V1.0 + recomp/patches/sml2dx_v181.bps (CRC32
+# F0799017, 1 MiB, CGB-only, MBC5). The recompiler applies that BPS at
+# generation time, and the generated body applies the SAME BPS in memory at
+# boot to the user's V1.0 ROM — so the hack is never shipped and never asked for.
+#
+# Used with: gbrecomp --config super_mario_land_2_dx.toml
+
+[rom]
+path = "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
+patch_file = "recomp/patches/sml2dx_v181.bps"
+output_dir = "generated_dx"
+runtime_dir = "../gb-recompiled/runtime"
+output_prefix = "Super_Mario_Land_2_DX"
+# The faithful body's seed manifest is harvested from V1.0 addresses; the DX
+# image relocates code, so this body keeps its own.
+dispatch_manifest = "dispatch_misses_dx.toml"
+
+[options]
+aggressive_scan = true
+emit_comments = true
+# Library body: no main(), no CMake project, every global namespaced behind
+# "Super_Mario_Land_2_DX__" so it links beside the faithful body. The emitted
+# Super_Mario_Land_2_DX_body.cmake lists its sources for game_build.cmake.
+body_only = true

@@ -32,6 +32,7 @@ _symtest_*.toml
 release-stage/
 release-linux/
 release-macos/
-build-release-engine/
+build-release-engine*/
 build-linux-*/
 build-macos-*/
+build-linux-prod/

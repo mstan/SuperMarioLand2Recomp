@@ -48,6 +48,10 @@ Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 
 ## Running / packaging
 
+For a release build, use `make_release.ps1` (Windows zip), `build-linux.sh`
+(AppImage) or `build-macos.sh` (.app/.dmg) — they build, stage, gate on the ROM
+CRC and verify the result. See `RELEASE.md`.
+
 The build stages the mingw-w64 runtime DLLs (`SDL2.dll`, `libEGL.dll`, `libGLESv2.dll`,
 `zlib1.dll`, `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`) and the
 launcher `assets/` next to `generated/build/Super_Mario_Land_2.exe`, so it runs from a

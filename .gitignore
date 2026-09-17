@@ -27,3 +27,11 @@ __pycache__/
 *.pyc
 _symtest_*/
 _symtest_*.toml
+
+# release packaging output
+release-stage/
+release-linux/
+release-macos/
+build-release-engine/
+build-linux-*/
+build-macos-*/

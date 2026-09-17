@@ -224,17 +224,36 @@ def run_dx():
         before = p.view()
         held_before = before["held_runs"]
         p.buttons(0x08)
-        seen_transition = False
-        for _ in range(40):
-            p.step(4)
-            if p.view()["overlay"] == "transition":
+        # Per-frame row alignment across the whole dive. The game scrolls SCY
+        # without the camera necessarily keeping up, so the composed origin is
+        # tracked incrementally from the previous frame; every frame it must
+        # still name the row the hardware is displaying, and it must never jump.
+        dive, prev_top, seen_transition = [], None, False
+        for _ in range(80):
+            p.step(1)
+            v = p.view()
+            live_scy = v["scy_live"]
+            if v["transition_flag"]:
                 seen_transition = True
+            if v["mode"] != 4:
+                continue
+            assert (v["top"] & 0xFF) == live_scy, (
+                "the composed origin does not name the row the PPU is showing",
+                v["frame"], v["top"], live_scy)
+            if prev_top is not None:
+                assert abs(v["top"] - prev_top) <= 32, (
+                    "the composed origin jumped a page", v["frame"], prev_top, v["top"])
+            prev_top = v["top"]
+            dive.append(dict(frame=v["frame"], top=v["top"], scy=live_scy,
+                             wide=v["wide"], valid=v["valid"], score=v["score"],
+                             paint=v["paint_score"]))
         p.buttons(0)
+        assert all(d["wide"] == 1 for d in dive), (
+            "the view narrowed during the dive",
+            [d for d in dive if d["wide"] != 1][:4])
         p.step(60)
         after = p.view()
         assert seen_transition, "pressing Down never started a room transition"
-        assert after["held_runs"] > held_before, (
-            "the transition was never held -- the assertion below proves nothing", after)
         assert after["wide"] == 1 and after["valid"] == 1, (
             "the sub-room did not compose wide", after)
         assert after["flips"] == before["flips"], (
@@ -245,6 +264,9 @@ def run_dx():
                            subroom_score=after["score"],
                            subroom_attr=after["attr_score"],
                            subroom_cam=[after["camera_x"], after["camera_y"]],
+                           dive_frames=len(dive),
+                           dive_top=[dive[0]["top"], dive[-1]["top"]] if dive else None,
+                           scroll_offpage=after["scroll_offpage"],
                            held_runs=after["held_runs"] - held_before)
 
         head, flip_events = p.flip_log()

@@ -232,7 +232,7 @@ static struct {
     int view_left, view_width;
     int extra_left, extra_right;
     int bound_left, bound_right;
-    int score_hit, score_total;
+    int score_hit, score_total, paint_hit;
     int attr_hit, attr_total, attr_prio_diff;
     int mode;
     unsigned captures, capture_frames, fallbacks, rescues, ghosts;
@@ -259,6 +259,11 @@ static struct {
      * pause screen and the pipe animation are shown exactly as the hardware
      * draws them -- only the margins are frozen. */
     int overlay;           /* SML2_REJ_MODE (pause) / _TRANSITION, or 0     */
+    /* Incremental scroll tracking: the previous frame's answer, so a stale
+     * camera cannot put the decode on the wrong 256-pixel page. */
+    int scroll_tracked, scroll_cam_x, scroll_cam_y, scroll_left, scroll_top;
+    uint8_t scroll_scx, scroll_scy;
+    unsigned scroll_offpage;   /* frames the camera would have got wrong     */
     int holding;           /* the previous frame was held                   */
     unsigned held;         /* frames held wide on an overlay                */
     unsigned held_runs;    /* distinct overlays held through                */
@@ -689,11 +694,12 @@ static void gate_reject(GBContext *ctx, int reason) {
  * makes the bit-7 exemption fall out rather than be asserted: BG-over-OBJ
  * priority selects no BG colour, so it can never change the answer here.
  */
-static int cell_paints_same(GBContext *ctx, uint8_t tile, uint8_t da, uint8_t ha) {
-    if (!((da ^ ha) & 0x7Fu)) return 1;
+static int cell_paints_same(GBContext *ctx, uint8_t ta, uint8_t da,
+                            uint8_t tb, uint8_t ha) {
+    if (ta == tb && !((da ^ ha) & 0x7Fu)) return 1;
     for (int row = 0; row < 8; row++) {
-        unsigned aa = tile_row_addr(tile, (da & SML2_ATTR_FLIP_Y) ? 7 - row : row, da);
-        unsigned ab = tile_row_addr(tile, (ha & SML2_ATTR_FLIP_Y) ? 7 - row : row, ha);
+        unsigned aa = tile_row_addr(ta, (da & SML2_ATTR_FLIP_Y) ? 7 - row : row, da);
+        unsigned ab = tile_row_addr(tb, (ha & SML2_ATTR_FLIP_Y) ? 7 - row : row, ha);
         uint8_t alo = s.vram[aa], ahi = s.vram[aa + 1];
         uint8_t blo = s.vram[ab], bhi = s.vram[ab + 1];
         for (int x = 0; x < 8; x++) {
@@ -730,7 +736,6 @@ static int validate_scene(GBContext *ctx) {
      * one it already proved. */
     s.overlay = 0;
     if (s.mode == SML2_MODE_PAUSE) s.overlay = SML2_REJ_MODE;
-    else if (peek(ctx, SML2_TRANSITION)) s.overlay = SML2_REJ_TRANSITION;
 
     if (!s.overlay && s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH)
         REJECT(SML2_REJ_MODE);
@@ -754,7 +759,7 @@ static int validate_scene(GBContext *ctx) {
     int rows = (s.wy + 7) / 8;
     if (rows > 18) rows = 18;
     memset(s.cell_miss, 0, sizeof s.cell_miss);
-    int hit = 0, total = 0, ahit = 0, atotal = 0, aprio = 0;
+    int hit = 0, total = 0, ahit = 0, atotal = 0, aprio = 0, phit = 0;
     for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < 21; tx++) {
             int wx = s.left + tx * 8, wy = s.top + ty * 8;
@@ -764,10 +769,41 @@ static int validate_scene(GBContext *ctx) {
             unsigned sy = (unsigned)(s.scy + ty * 8) & 0xFFu;
             unsigned cell = 0x1800u + (sy >> 3) * 32u + (sx >> 3);
             uint8_t tile = tile_at(wx, wy);
+            uint8_t hw_tile = s.vram[cell];
+            uint8_t da = attr_for_tile(tile);
+            uint8_t ha = s.cgb ? s.vram[VRAM_SIZE + cell] : 0u;
             uint8_t miss = 0;
             total++;
-            int tile_ok = s.vram[cell] == tile;
+            int tile_ok = hw_tile == tile;
             if (tile_ok) hit++; else miss |= 1u;
+            /* THE gate: would this cell be painted the way the hardware paints
+             * it? Tile index and attribute are both only proxies for that, and
+             * both are proxies the ROM breaks.
+             *
+             * Block $7F -- every warp pipe -- is stamped into the tilemap
+             * directly by 01:5C4F rather than read out of the $A600 table,
+             * whose entry for it is a stale 122, and DX attributes that stamp
+             * from [$D07F]. Standing under the Mushroom Zone pipe, 24 of the
+             * 357 scored cells read (block $7F, table tile 122, hardware tile
+             * $7F/attr 5) and the tile gate fell to 333/357 = 93.3%, under its
+             * 95% threshold, so the view pillarboxed for as long as the player
+             * stood there -- 2940 rejections in 5876 scored frames in the
+             * owner's session.
+             *
+             * Both tiles paint the same thing. Tile 122 is $FF00 x8 (every
+             * pixel colour 1) and palette 0 colour 1 is (74,164,246); tile $7F
+             * is all zeroes (every pixel colour 0) and palette 5 colour 0 is
+             * (74,164,246). Identical sky blue, 64 pixels out of 64. Forcing
+             * the block to tile $7F is not the fix either -- measured, the same
+             * block id renders as 122 in 8 other visible cells, so the block
+             * map genuinely cannot tell the two apart and no table lookup will.
+             *
+             * Comparing the painted pixels answers the question that actually
+             * matters, and subsumes the attribute-byte case this already
+             * handled. The fast path is the byte compare, true for nearly every
+             * cell; only a differing cell is rendered both ways. */
+            if (cell_paints_same(ctx, tile, da, hw_tile, ha)) phit++;
+            else miss |= 4u;
             /* Second, independent proof, and the one that makes the DX body
              * safe to widen: the attribute this module would paint the margin
              * with must be the attribute the hardware is showing in bank 1. */
@@ -789,11 +825,9 @@ static int validate_scene(GBContext *ctx) {
              * changes no colour, so the gate is on the seven bits that do, and
              * bit-7-only divergences are counted rather than passed over. */
             if (s.cgb && tile_ok) {
-                uint8_t da = attr_for_tile(tile);
-                uint8_t ha = s.vram[VRAM_SIZE + cell];
                 uint8_t diff = (uint8_t)(da ^ ha);
                 atotal++;
-                if (cell_paints_same(ctx, tile, da, ha)) ahit++; else miss |= 2u;
+                if (!(diff & 0x7Fu)) ahit++; else miss |= 2u;
                 if (diff & SML2_ATTR_PRIORITY) aprio++;
                 if (diff & 0x7Fu) s.attr_byte_diff++;
             }
@@ -805,17 +839,22 @@ static int validate_scene(GBContext *ctx) {
     s.attr_hit = ahit;
     s.attr_total = atotal;
     s.attr_prio_diff = aprio;
+    s.paint_hit = phit;
     s.gate_scene++;
     /* An overlay scored: the numbers are in the ring, but the frame is still
      * refused -- the world may be intact while VRAM is not (the pause screen
      * swaps in font tiles), and holding the proven frame is always right and
      * never draws anything unproven. */
     if (s.overlay) REJECT(s.overlay);
-    if (total <= 0 || hit * 100 < total * 95) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
+    /* Fail closed on what is drawn. The old 95% tile threshold is gone: a
+     * pixel-exact question does not want a tolerance, and the debounce already
+     * absorbs the one-frame transients it used to cover. */
+    if (total <= 0 || phit != total) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
     /* Fail closed on colour: a single wrong attribute in the native window
      * means the derivation is wrong somewhere, so no margin is trustworthy. */
     if (s.cgb && !s.attr_ok) { s.gate_attr_fail++; REJECT(SML2_REJ_NOTABLE); }
-    if (s.cgb && ahit != atotal) { s.gate_attr_fail++; REJECT(SML2_REJ_ATTR); }
+    /* Attribute-byte disagreement is now reporting only: if it changed a
+     * pixel, the paint gate above already refused the frame. */
 #undef REJECT
     return 1;
 }
@@ -1186,12 +1225,47 @@ static void snapshot(GBContext *ctx) {
     }
     s.cam_prev = s.cam_x;
     s.cam_prev_ok = 1;
-    s.left = s.cam_x - SML2_CAM_CENTRE_X;
-    s.top = s.cam_y - SML2_CAM_CENTRE_Y;
-    /* Follow the scroll registers the hardware is actually displaying: screen
-     * shake subtracts from SCY without moving the camera. */
-    s.left += (int8_t)(uint8_t)(s.scx - (uint8_t)s.left);
-    s.top += (int8_t)(uint8_t)(s.scy - (uint8_t)s.top);
+    /* ---- where the screen's top-left actually is in the world -------------
+     *
+     * The camera ($FFC8/$FFCA) is the usual answer, corrected onto the scroll
+     * register the hardware is displaying, because screen shake moves SCY
+     * without moving the camera. That correction is a single int8_t delta, and
+     * it can only express +-127.
+     *
+     * A warp-pipe dive breaks it. The game scrolls SCY from 120 to 252 while
+     * leaving $FFC8 at its pre-dive value, a shift of 132, which wraps to -124
+     * and lands the decode a whole 256-pixel block row away from the world.
+     * The 21-column score cannot see that -- it compares cells that alias
+     * modulo 256 -- so it passed anyway, and the margins would have been drawn
+     * from the wrong part of the level.
+     *
+     * So the register is followed INCREMENTALLY from the previous frame, where
+     * per-frame motion is single digits and always fits, and the camera is
+     * re-anchored to only when it is the thing that moved. Both candidates
+     * satisfy (uint8_t)origin == register by construction; they differ only in
+     * which 256-pixel page, and that is exactly the question the camera stops
+     * being able to answer mid-dive. */
+    int cam_left = s.cam_x - SML2_CAM_CENTRE_X;
+    int cam_top = s.cam_y - SML2_CAM_CENTRE_Y;
+    cam_left += (int8_t)(uint8_t)(s.scx - (uint8_t)cam_left);
+    cam_top += (int8_t)(uint8_t)(s.scy - (uint8_t)cam_top);
+    int cam_moved = !s.scroll_tracked ||
+                    s.cam_x != s.scroll_cam_x || s.cam_y != s.scroll_cam_y;
+    if (cam_moved) {
+        s.left = cam_left;
+        s.top = cam_top;
+    } else {
+        s.left = s.scroll_left + (int8_t)(uint8_t)(s.scx - s.scroll_scx);
+        s.top = s.scroll_top + (int8_t)(uint8_t)(s.scy - s.scroll_scy);
+        if (s.left != cam_left || s.top != cam_top) s.scroll_offpage++;
+    }
+    s.scroll_tracked = 1;
+    s.scroll_cam_x = s.cam_x;
+    s.scroll_cam_y = s.cam_y;
+    s.scroll_scx = s.scx;
+    s.scroll_scy = s.scy;
+    s.scroll_left = s.left;
+    s.scroll_top = s.top;
 
     /* The sprite list built during the frame that is about to be shown. */
     s.count = s.build_count;
@@ -1477,6 +1551,7 @@ static void reset(GBContext *ctx) {
     s.fail_run = 0;
     s.holding = 0;
     s.overlay = 0;
+    s.scroll_tracked = 0;
     s.valid = 0;
     s.count = s.build_count = 0;
     s.bound_left = s.bound_right = 0;
@@ -1810,7 +1885,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
     gb_debug_server_send_fmt(
         "{\"id\":%d,\"valid\":%d,\"mode\":%d,\"width\":%d,\"left\":%d,\"top\":%d,"
         "\"view_left\":%d,\"camera_x\":%d,\"camera_y\":%d,\"bounds\":[%d,%d],"
-        "\"score\":[%d,%d],\"attr_score\":[%d,%d],\"attr_prio_diff\":%d,"
+        "\"score\":[%d,%d],\"attr_score\":[%d,%d],\"paint_score\":[%d,%d],"
+        "\"attr_prio_diff\":%d,"
         "\"cgb\":%d,\"attr_table\":%d,"
         "\"tileset\":%d,\"sprites\":%d,\"captures\":%u,\"capture_frames\":%u,"
         "\"widened\":%u,\"dropped\":%u,\"fallbacks\":%u,"
@@ -1823,7 +1899,13 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         /* The palette the LAST COMPOSED frame was painted with. A hold freezes
          * the world but must never freeze this, or the margins stop following
          * a pause dim or a fade the native strip is already showing. */
-        "\"used_bgp\":%u,\"used_bg_pal0\":%u,"
+        "\"used_bgp\":%u,\"used_bg_pal0\":%u,\"scroll_offpage\":%u,"
+        /* The LIVE camera and scroll registers, read fresh. camera_x/camera_y
+         * above belong to the composed frame, which during a hold is a frozen
+         * one -- reading those and calling them "the camera right now" is how
+         * this module twice talked itself into a wrong diagnosis. */
+        "\"camera_live\":[%d,%d],\"scy_live\":%d,\"scx_live\":%d,"
+        "\"transition_flag\":%d,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
@@ -1833,7 +1915,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"spawn_scans\":%u,\"spawn_ungated\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
-        s.attr_hit, s.attr_total, s.attr_prio_diff, s.cgb, s.attr_ok,
+        s.attr_hit, s.attr_total, s.paint_hit, s.score_total,
+        s.attr_prio_diff, s.cgb, s.attr_ok,
         s.ctx ? peek(s.ctx, SML2_DX_TILESET) : 0, s.count,
         s.captures, s.capture_frames, s.rescues, s.ghosts, s.fallbacks,
         s.gate_scene, s.gate_tile_fail, s.gate_attr_fail,
@@ -1843,7 +1926,11 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.pillarbox_model, SML2_FALLBACK_DEBOUNCE,
         s.overlay > 0 && s.overlay < SML2_REJ_COUNT ? k_reject_name[s.overlay] : "",
         s.held, s.held_runs,
-        s.bgp, (unsigned)(s.bg_pal[0] | (s.bg_pal[1] << 8)),
+        s.bgp, (unsigned)(s.bg_pal[0] | (s.bg_pal[1] << 8)), s.scroll_offpage,
+        s.ctx ? peek16(s.ctx, SML2_CAM_X) : 0, s.ctx ? peek16(s.ctx, SML2_CAM_Y) : 0,
+        s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scy : 0,
+        s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scx : 0,
+        s.ctx ? peek(s.ctx, SML2_TRANSITION) : 0,
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],

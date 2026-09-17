@@ -236,8 +236,8 @@ fetch_tool "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA" "$LINUXDEPLOY_BIN"
 fetch_tool "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA" "$APPIMAGETOOL_BIN"
 # --appimage-extract-and-run: WSL and most containers have no FUSE, and both
 # tools are themselves AppImages.
-LINUXDEPLOY="$LINUXDEPLOY_BIN --appimage-extract-and-run"
-APPIMAGETOOL="$APPIMAGETOOL_BIN --appimage-extract-and-run"
+LINUXDEPLOY=("$LINUXDEPLOY_BIN" --appimage-extract-and-run)
+APPIMAGETOOL=("$APPIMAGETOOL_BIN" --appimage-extract-and-run)
 
 # Icon: the real box art when ImageMagick is available, a flat placeholder
 # otherwise (an AppImage without an icon is rejected by appimagetool).
@@ -276,7 +276,7 @@ Categories=Game;
 Terminal=false
 EOF
 
-$LINUXDEPLOY --appdir "$APPDIR" --executable "$BIN" \
+"${LINUXDEPLOY[@]}" --appdir "$APPDIR" --executable "$BIN" \
     --desktop-file "$WORK/$SLUG.desktop" --icon-file "$ICON"
 
 # The ImGui pre-boot launcher loads fonts + images from assets/ next to the
@@ -375,7 +375,7 @@ chmod +x "$APPDIR/AppRun"
 
 APP="$OUT/$RELEASE_SLUG-linux-$VERSION-x86_64.AppImage"
 rm -f "$APP"
-ARCH=x86_64 $APPIMAGETOOL "$APPDIR" "$APP"
+ARCH=x86_64 "${APPIMAGETOOL[@]}" "$APPDIR" "$APP"
 chmod +x "$APP"
 echo "      BUILT: $APP ($(du -h "$APP" | cut -f1))"
 

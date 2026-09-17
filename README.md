@@ -46,6 +46,23 @@ generated/build/Super_Mario_Land_2.exe
 Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 `.\Launch.ps1 -Faithful` to seed the toggle.
 
+## Driving a build over TCP (probes)
+
+The engine's debug server (`localhost:4370`, JSON-per-line) can load a save
+state, step frames, press buttons and screenshot the presented frame. Its full
+command list is `gb-recompiled/docs/DEBUG_SERVER.md`; `tools/tcp.py` is the
+client every probe here imports:
+
+```powershell
+python tools\probe_pause_pipe_capture.py          # loads a fixture state, captures 32:9 PNGs
+```
+
+`sml2_save`, `sml2_load` and `sml2_capture` are **superseded** by the generic
+`save_state`, `load_state` and `screenshot` commands; they survive only as thin
+aliases that pin their historic default paths (`logs/probe.state`,
+`logs/probe.ppm`) so older scripts keep working. New code should call the
+generic commands and pass its own path.
+
 ## Running / packaging
 
 The build stages the mingw-w64 runtime DLLs (`SDL2.dll`, `libEGL.dll`, `libGLESv2.dll`,

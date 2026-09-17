@@ -135,30 +135,63 @@ the probe route: 2025 frames at 357/357, 8 at 355, 67 at 353.
 Anything that reuses level RAM with different VRAM -- the world map, the level
 intro card, the file select -- fails the gates.
 
+## The gate asks what gets painted
+
+The margins are correct exactly when every cell is painted the way the hardware
+paints it. Tile index and attribute byte are both only proxies for that, and the
+ROM breaks both, so the gate compares the **pixels**: the byte compare is the
+fast path, and only a differing cell is rendered both ways, 64 pixels.
+
+Several block ids are stamped straight into the tilemap by the ROM rather than
+read out of the `$A600` definitions, and the block map does not record which
+writer last touched a cell:
+
+| block | what the ROM stamps | where |
+|---|---|---|
+| `$7F` | four copies of tile `$7F` | `01:5A96` sets the id, `01:5C4F` stamps; DX attributes it from `[$D07F]` (`24:7B80`) |
+| 7 | tiles `$F8`-`$FB`, DX forcing BG priority | `01:5B40` -> `01:4100` (`ld a,[$D0F8] / or $80`) |
+| erase | four copies of tile `$FF` | `01:5C24`, DX from `[$D0FF]` (`24:7B43`) |
+
+Block `$7F` is every warp pipe, and its `$A600` entry is a stale
+`[122,122,122,122]`. Standing under the Mushroom Zone pipe, 24 of the 357
+scored cells read (block `$7F`, table tile 122, hardware tile `$7F` attr 5): the
+old tile-byte gate scored **333/357 = 93.3%**, under its 95% threshold, and the
+view pillarboxed for as long as the player stood there -- 2940 rejections in
+5876 scored frames in the owner's session. Both tiles paint the same thing:
+tile 122 is `$FF00` x8, every pixel colour 1, and palette 0 colour 1 is
+`(74,164,246)`; tile `$7F` is all zeroes, every pixel colour 0, and palette 5
+colour 0 is `(74,164,246)`. Identical sky blue, 64 pixels of 64. The paint
+gate scores that spot **357/357**.
+
+Forcing block `$7F` to tile `$7F` is **not** the fix and was measured and
+rejected: the same block id renders as 122 in 8 other cells of the same screen,
+so the block map genuinely cannot tell them apart.
+
+The 95% tolerance stays, on the new quantity. Dropping it cost **16**
+pillarboxes over a 16000-frame faithful attract run, where the erase writer
+above leaves four cells that really do paint differently for hundreds of
+consecutive frames.
+
 ## Overlay scenes are held, not narrowed
 
-Pause (`$FF9B` = `$08`) and a pipe/door transition (`$A20E` non-zero) do not
-replace the world. The level RAM, the camera and the bounds are the ones the
-last accepted frame was composed from, and the game hands them straight back.
-Refusing them narrowed the view twice per event, which is what the owner saw:
+Pause (`$FF9B` = `$08`) does not replace the world: the level RAM, the camera
+and the bounds are the ones the last accepted frame was composed from, and the
+game hands them straight back. Refusing it narrowed the view twice per pause,
+which is what the owner saw. While pause is up the view is **held** on the last
+accepted frame for as long as it lasts, with no expiry, and the debounce counter
+is held at zero so a genuine failure afterwards still gets its full window.
 
 | event | before | after |
 |---|---|---|
-| Start, then Start again | 2 wide<->native transitions | **0** |
-| Down into a warp pipe | 2 | **0** |
+| Start, then Start again | 2 wide<->native transitions | **0** (63 frames held) |
+| Down into a warp pipe | 2 | **0** (composed live, 80 frames) |
 
-Pause used to be refused simply because `$08` was not a mode the gate accepted.
-The pipe was worse: `$A20E` stays non-zero for about **24 frames**, which
-outlasts the 6-frame debounce on its own, so the view always narrowed and then
-came back. The sub-room on the far side was never the problem -- it scores
-357/357 and composes wide, measured at camera (1460, 623).
-
-While an overlay is in effect the view is **held** on the last accepted frame
-for as long as it lasts, with no expiry, and the debounce counter is held at
-zero so a genuine failure afterwards still gets its full window. The native 160
-columns keep coming from the live PPU, so the pause screen and the pipe
-animation are shown exactly as the hardware draws them -- only the margins are
-frozen. `sml2_view` reports `overlay`, `held` and `held_runs`.
+The pipe was a separate problem: `$A20E` stays non-zero for about **24 frames**,
+which outlasts the 6-frame debounce on its own, so the view always narrowed and
+came back. It is no longer treated as an overlay at all -- the dive composes
+live, every frame, so the margins scroll with the native strip instead of
+freezing. The sub-room on the far side was never the problem: it scores 357/357
+at camera (1460, 623).
 
 A frozen frame carries the **world** -- geometry, the block map, the tile bytes,
 the attribute table, the bounds -- and deliberately **not the palettes**. DX
@@ -167,222 +200,30 @@ BCPD, and the native 160 columns, which come from the live PPU, dim with it.
 Margins composed through a frozen palette snapshot did not: the frame came out
 as a dimmed strip between two bright margins, measured at **-38 mean luminance
 over exactly columns 176..335** of a 512-wide frame with both margins
-bit-identical to the gameplay frame before them.
+bit-identical to the gameplay frame before them. A palette is a pure colour
+lookup over the tile data, so applying the live one to frozen tiles is the only
+self-consistent answer. BGP/OBP0/OBP1 are live for the same reason. LCDC stays
+frozen -- it selects which tile-data block an index means.
 
-A palette is a pure colour lookup over the tile data, so applying the live one
-to frozen tiles is both safe and the only self-consistent answer: the whole
-width then dims, brightens or fades exactly as the hardware does to the part of
-the world it is still showing. BGP/OBP0/OBP1 are live for the same reason, so
-the faithful body behaves the same way. LCDC stays frozen -- it selects which
-tile-data block an index means, so a live one would reinterpret frozen indices.
+### Disproved, so it is not re-tried
 
-`tools/probe_pause_pipe.py` holds that: per-column luminance change across a
-pause must be the same in both margins as in the native strip (measured spread
-**2.5** of about **-75**, against **38** before the fix), no margin pixel may
-carry a colour the hardware no longer has loaded (**0**), and `sml2_view`'s
-`used_bgp` / `used_bg_pal0` -- the palette the last composed frame was actually
-painted with -- must equal the live registers on both bodies.
+The dive was first blamed on the scroll anchor. `s.top` is derived from the
+camera and corrected onto SCY with a single `int8_t` delta, and during a dive
+SCY runs 120 -> 252 while the camera *appeared* pinned -- a shift of 132 that
+would wrap. The camera is not pinned. The "stale camera" was this module's own
+frozen frame being reported back, because `cam_x`/`cam_y` are part of the state
+a hold restores; `s.mode` had already fooled the same reading once. With the
+live camera read separately (`sml2_view` now reports `camera_live`, `scy_live`,
+`scx_live` beside the composed values) the camera moves every frame and the
+anchor is correct on all 80 dive frames.
 
-An overlay frame is still scored, and the numbers go into the rejection ring:
-measured on the fixture, pause scores **357/357** with LCDC, WY, WX, SCX and
-SCY all unchanged from the gameplay frame before it, so the old note about the
-pause screen "reusing stage metadata with font VRAM" does not hold for this
-game -- but the frame is refused anyway and the proven one redisplayed, because
-holding can never draw something unproven and composing live could.
-
-That choice is load-bearing for the pipe specifically. During the dive the game
-scrolls `SCY` from 120 to 252 **without moving `$FFC8`**, and this module's
-scroll-follow correction is a single `int8_t` delta from the camera
-(`s.top += (int8_t)(scy - (uint8_t)s.top)`), which cannot express a shift of
-132. Composing those frames live would place the margins a whole 256-pixel BG
-row away from the world while the 21-column score -- which aliases modulo 256 --
-still passed. Frozen margins for the ~0.4 s of the dive are the honest answer
-until that correction tracks `SCY` incrementally.
-
-## The fallback is debounced
-
-The gate is a proof obligation, not a presentation decision. It can go false for
-a single frame because the guest was midway through a VBlank update, or because
-a demo segment is changing scene -- and dropping to a pillarboxed 160 for that
-one frame looks far worse than showing the previous frame's margins.
-
-So the gate result is debounced: **6 consecutive rejections** (~100 ms at 60 Hz)
-before the view narrows, and an **instant** return to wide on the first frame
-that passes. Inside the debounce window the margins are composed from the last
-frame that PASSED, frozen whole, while the native 160 columns keep coming from
-the live PPU as always. A state load drops the frozen frame rather than compose
-a new world with an old one's margins.
-
-The same code path serves both bodies. `sml2_view` reports `wide` (the
-presentation decision), `valid` (the raw gate), `fail_run`, `debounce`,
-`debounced`, `narrowed`, `narrowed_model` and `pillarbox_model`; the last is the
-flicker number -- a frame that was wide and snapped to pillarbox because the
-level model failed -- and it is 0.
-
-## Why a gate rejection happened
-
-Every rejection is reason-coded and lands in an always-on ring, in every build.
-"The view flickered" is a handful of frames scattered through a ten-thousand
-frame run, so arming a trace after seeing it is exactly how you miss it: the
-rings fill from boot and the probe reads them backwards.
-
-| Reason | Meaning |
-|---|---|
-| `mode` | `$FF9B` is not scrolling gameplay or death |
-| `bonus` | `$A28B & 0xF0`: bonus/minigame engine |
-| `transition` | `$A20E`: pipe/door room change in flight |
-| `lcdc` / `window` / `camera` | LCDC, WY/WX or the camera are not in their gameplay state |
-| `rambank` | cart SRAM is not the bank the level lives in |
-| `negcoord` | the visible grid reaches negative world coordinates |
-| `blockid` | a block id > `$7F`: level RAM is not holding a level |
-| `tile` | block-map decode vs. the hardware tilemap below 95% |
-| `attr` | a margin cell would be painted a different colour than the hardware paints it |
-| `mode` with `$FF9B` = `$08`, and `transition` | **overlay**: refused, but the view is held rather than narrowed |
-| `notable` | CGB body with no DX attribute table loaded |
-
-`sml2_gate_log` returns the ring: per event the frame, the reason, the live
-ROM/SRAM/WRAM banks and `LY`, the scores, the tileset, and the first four
-offending cells with block id, both tile indices and both attribute bytes.
-`sml2_flip_log` returns every wide/native transition with the reason that
-caused it. `sml2_score_map` prints the per-cell outcome of the last scored
-frame.
-
-## Enemy spawns
-
-At a wide aspect the world is visible far past the 160 columns the Game Boy
-draws, but the game still decides when to spawn an enemy from the old screen
-edge, so enemies appear inside the margin instead of walking in from off view.
-It is most obvious in the title demo, which is where it was first noticed.
-
-Spawn timing is **gameplay**, not presentation: moving it changes when an enemy
-starts moving, and therefore where it is when the player arrives. So the option
-defaults to leaving it alone.
-
-| Choice | Spawn edge | Effect |
-|---|---|---|
-| **Original** | `camX +- 112`, the ROM's own | exactly vanilla spawn decisions; enemies pop in at the native screen edge inside the wide view |
-| **Extended** (default) | `camX +- (112 + that side's view margin)` | enemies spawn at the edge of the composed view, ramped so none is lost |
-
-### What the ROM does
-
-The window builder at `02:4000` rebuilds three camera windows every frame; the
-middle one is the spawn scanner's, `camX +- 112`, in `$AF12`/`$AF13` (upper) and
-`$AF14`/`$AF15` (lower). It then compares the live camera against last frame's
-copy in `$AF24`/`$AF25` and copies **one** edge out of that pair into
-`$AF00`/`$AF01`:
-
-| Branch | Where | Effect |
-|---|---|---|
-| scrolled right | `02:4085` | `$AF22 = +1`, `$AF00 = [$AF12]`, `$AF01 = [$AF13] & $F8` |
-| did not scroll | `02:409A` | `$AF00 = $FF`, and the scanner returns immediately |
-| scrolled left | `02:40A4` | `$AF22 = $FF`, `$AF00 = [$AF14]`, `$AF01 = [$AF15] & $F8` |
-
-`02:417D` then calls the scanner and latches the camera for next frame. The
-scanner — `02:4C31` forward, `02:4CEB` backward — walks the spawn list from its
-cursor `$AF1E`/`$AF1F` and compares each record's 16-bit world X against that
-edge:
-
-* X **past** the edge — return; the camera has not reached it yet.
-* X **equal** to the edge — spawn it, if the difficulty byte at `+2` allows,
-  then step on.
-* X **behind** the edge — **step on**, storing the advanced cursor at `02:4C64`.
-  The entry is consumed, and nothing spawns.
-
-Only exact equality spawns, and the edge is 8-px aligned, so the edge has to
-visit every multiple of 8 or entries fall through the gap. Vanilla is safe
-because the camera never moves more than 8 px in a frame (measured maximum 3 px
-over the probe route). That is why this cannot simply be switched on.
-
-### What Extended does
-
-`read_override` answers the builder's own four reads — `$AF12`/`$AF13` at
-`02:408A`/`02:4090` and `$AF14`/`$AF15` at `02:40A9`/`02:40AF` — with a window
-that reaches the visible view edge instead: `camX + 112 + right margin` and
-`camX - 112 - left margin`, the same margins the activation and cull windows
-already use, clamped to the level's own extent. Everything downstream is the
-ROM's own code: the `& $F8` alignment, the direction choice, the `$FF`
-no-scroll case, the equality test, the difficulty filter, the free-slot search
-and the cursor. No game logic is reimplemented, and the scanner is not called
-from the host.
-
-The value handed back climbs toward that target by **at most 8 px per call**,
-and the builder reads exactly once per frame it takes that direction's branch —
-that is, once per frame the scanner actually runs that way. So the aligned edge
-advances by at most one 8-px step between scans and cannot straddle an entry.
-The ramp is measured against the last edge *presented*, never against the
-camera, so frames the game did not scan cost the ramp nothing.
-
-Lagging *behind* vanilla is deliberately left alone rather than corrected: a
-lower edge only makes the scanner stop earlier and consumes nothing, whereas
-snapping forward to catch up is exactly the jump this design exists to avoid.
-
-It re-engages from the vanilla edge — offset zero, then ramping again — whenever
-the ramp cannot be trusted to be continuous: the scene gate rejected a frame,
-the level changed, or the camera itself moved further than 8 px (a warp, a door,
-a state load). With the mod off, `read_override` is never installed at all.
-
-### Spawns and the debounce window
-
-[The fallback is debounced](#the-fallback-is-debounced): for up to six rejected
-frames the view stays **wide**, composed from the last frame that passed. That
-is right for pixels and wrong for spawns, and the two are deliberately split:
-
-* the compositor, the actor capture and the activation/cull widening follow
-  `wide` — the presentation decision;
-* **the spawn override follows `valid`** — the proof that *this* frame's world
-  was actually decoded.
-
-Two reasons. `frame_restore()` puts the last accepted frame's `cam_x` and
-margins back into the module's state, so an edge computed during the window
-would be measured from a camera the guest has already left. And a mispainted
-pixel is over in 16 ms, whereas the scanner *consumes*: an entry given away on
-an unproven frame cannot be taken back. So a debounced frame presents the
-guest's own `camX ± 112`, the ramp re-engages from vanilla when a frame is
-proved again, and the reads that were handed back untouched are counted in
-`spawn_ungated`.
-
-The cost is honest and measured: a gate blink costs the whole reach, which then
-re-ramps at ≤ 8 px per scanning frame. It buys the guarantee that no enemy is
-ever spawned — or eaten — on a frame the module could not prove it understood.
-
-The always-on ledger is the exception that proves the rule: it runs on *every*
-frame, gated or not, because the scanner runs then too. It therefore reads the
-cursor, the edge and the spawn list through the level's **own** cart RAM bank
-(`SML2_LEVEL_RAM_BANK`, via `peek_eram_bank`) rather than the live one — the
-compositor can refuse a frame whose bank is wrong, the ledger cannot.
-
-**Original installs nothing.** No override, no read of `$AF12`..`$AF15`, no
-change to the cursor: `spawn_reads` is `[0, 0, 0, 0]` for the whole run.
-
-### Always-on ledger
-
-The scanner consumes silently, so "did we eat an entry" cannot be answered after
-the fact — by the time anyone asks, the entry is gone. The module therefore
-keeps a ledger of every frame from boot, in **both** policies, and the probes
-query it rather than arm anything: each frame it re-reads the cursor and the
-edge the ROM just used, and classifies every record the cursor stepped over as
-spawned (its X equalled the edge) or consumed. `sml2_spawn_state` returns the
-whole spawn list tagged with what has happened to each record, the running
-totals, and a 64-entry ring of the most recent consumed-without-spawning events
-with the camera, the edge and the edge's PREVIOUS position at the time.
-`sml2_view` carries the totals plus the live ramp state (`spawn_edge`,
-`spawn_reach`, `spawn_lag`, `spawn_reads`, `spawn_unpaired`, `spawn_resets`,
-`spawn_ungated`).
-
-Consumed entries are split into two kinds, because only one of them is a loss:
-
-| Kind | What happened | Is it a bug |
-|---|---|---|
-| `spawn_seek` | the cursor was far behind the camera and walked forward to it — every level load does this, in vanilla too | no; the level was never going to spawn them |
-| `spawn_stepped_over` | the entry lay between where this direction's edge was last time and where it is now: the edge **crossed** it | **yes** — this is the number the 8 px ramp exists to hold at zero |
-
-The raw `spawn_jumped` total is the sum and says nothing on its own: over a full
-attract cycle it is dominated by seeks (measured 99 with the mod's spawn policy
-Original, i.e. vanilla scanner behaviour).
-
-With the mod **off** nothing is installed at all — that build stays the faithful
-one — so `tools/probe_spawns.py` derives the identical ledger from the identical
-RAM for its reference run, and cross-checks the module's against it.
+An incremental version -- follow the register from the previous frame, re-anchor
+only when the camera moves -- was written, measured and reverted: it latched a
+stale 256-pixel page across a level reload, where the scroll teleports while the
+camera holds still, and the compositor returned `left = -256` for a camera at
+80. What is kept is the detector: `scroll_offpage` counts frames where the
+camera stood still while the register moved further than an `int8_t` can
+express, the only situation in which the anchor could be wrong. It has stayed 0.
 
 ## Verified ROM bindings
 

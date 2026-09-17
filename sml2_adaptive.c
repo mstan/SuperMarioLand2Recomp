@@ -1897,7 +1897,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
          * one -- reading those and calling them "the camera right now" is how
          * this module twice talked itself into a wrong diagnosis. */
         "\"camera_live\":[%d,%d],\"scy_live\":%d,\"scx_live\":%d,"
-        "\"transition_flag\":%d,"
+        "\"transition_flag\":%d,\"scy\":%d,\"scx\":%d,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
@@ -1923,6 +1923,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scy : 0,
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scx : 0,
         s.ctx ? peek(s.ctx, SML2_TRANSITION) : 0,
+        s.scy, s.scx,
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],

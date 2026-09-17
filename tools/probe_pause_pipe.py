@@ -232,19 +232,21 @@ def run_dx():
         for _ in range(80):
             p.step(1)
             v = p.view()
-            live_scy = v["scy_live"]
             if v["transition_flag"]:
                 seen_transition = True
             if v["mode"] != 4:
                 continue
-            assert (v["top"] & 0xFF) == live_scy, (
-                "the composed origin does not name the row the PPU is showing",
-                v["frame"], v["top"], live_scy)
+            # Pair like with like: `scy` is the register the composed frame was
+            # built from. `scy_live` is read now, after the guest has run on and
+            # may already have written the next frame's value.
+            assert (v["top"] & 0xFF) == v["scy"], (
+                "the composed origin does not name the row it was built from",
+                v["frame"], v["top"], v["scy"])
             if prev_top is not None:
                 assert abs(v["top"] - prev_top) <= 32, (
                     "the composed origin jumped a page", v["frame"], prev_top, v["top"])
             prev_top = v["top"]
-            dive.append(dict(frame=v["frame"], top=v["top"], scy=live_scy,
+            dive.append(dict(frame=v["frame"], top=v["top"], scy=v["scy"],
                              wide=v["wide"], valid=v["valid"], score=v["score"],
                              paint=v["paint_score"]))
         p.buttons(0)

@@ -132,12 +132,49 @@ just-changed block reads back one tile on hardware and another out of the block
 map until the next scroll redraws it. Measured identically on both bodies over
 the probe route: 2025 frames at 357/357, 8 at 355, 67 at 353.
 
-Anything that reuses level RAM with different VRAM -- the pause menu, the world
-map, the level intro card, the file select -- fails the gates.
+Anything that reuses level RAM with different VRAM -- the world map, the level
+intro card, the file select -- fails the gates.
 
-Pause deliberately falls back to native even though its frame is otherwise
-identical to gameplay; that is a policy choice, not a limitation (one constant,
-`SML2_MODE_PLAY`, in `sml2_adaptive.c`).
+## Overlay scenes are held, not narrowed
+
+Pause (`$FF9B` = `$08`) and a pipe/door transition (`$A20E` non-zero) do not
+replace the world. The level RAM, the camera and the bounds are the ones the
+last accepted frame was composed from, and the game hands them straight back.
+Refusing them narrowed the view twice per event, which is what the owner saw:
+
+| event | before | after |
+|---|---|---|
+| Start, then Start again | 2 wide<->native transitions | **0** |
+| Down into a warp pipe | 2 | **0** |
+
+Pause used to be refused simply because `$08` was not a mode the gate accepted.
+The pipe was worse: `$A20E` stays non-zero for about **24 frames**, which
+outlasts the 6-frame debounce on its own, so the view always narrowed and then
+came back. The sub-room on the far side was never the problem -- it scores
+357/357 and composes wide, measured at camera (1460, 623).
+
+While an overlay is in effect the view is **held** on the last accepted frame
+for as long as it lasts, with no expiry, and the debounce counter is held at
+zero so a genuine failure afterwards still gets its full window. The native 160
+columns keep coming from the live PPU, so the pause screen and the pipe
+animation are shown exactly as the hardware draws them -- only the margins are
+frozen. `sml2_view` reports `overlay`, `held` and `held_runs`.
+
+An overlay frame is still scored, and the numbers go into the rejection ring:
+measured on the fixture, pause scores **357/357** with LCDC, WY, WX, SCX and
+SCY all unchanged from the gameplay frame before it, so the old note about the
+pause screen "reusing stage metadata with font VRAM" does not hold for this
+game -- but the frame is refused anyway and the proven one redisplayed, because
+holding can never draw something unproven and composing live could.
+
+That choice is load-bearing for the pipe specifically. During the dive the game
+scrolls `SCY` from 120 to 252 **without moving `$FFC8`**, and this module's
+scroll-follow correction is a single `int8_t` delta from the camera
+(`s.top += (int8_t)(scy - (uint8_t)s.top)`), which cannot express a shift of
+132. Composing those frames live would place the margins a whole 256-pixel BG
+row away from the world while the 21-column score -- which aliases modulo 256 --
+still passed. Frozen margins for the ~0.4 s of the dive are the honest answer
+until that correction tracks `SCY` incrementally.
 
 ## The fallback is debounced
 
@@ -177,6 +214,7 @@ rings fill from boot and the probe reads them backwards.
 | `blockid` | a block id > `$7F`: level RAM is not holding a level |
 | `tile` | block-map decode vs. the hardware tilemap below 95% |
 | `attr` | a margin cell would be painted a different colour than the hardware paints it |
+| `mode` with `$FF9B` = `$08`, and `transition` | **overlay**: refused, but the view is held rather than narrowed |
 | `notable` | CGB body with no DX attribute table loaded |
 
 `sml2_gate_log` returns the ring: per event the frame, the reason, the live
@@ -445,6 +483,7 @@ python tools/probe_mods.py
 python tools/probe_dx_widescreen.py   # both bodies at 32:9, colour gate + captures
 python tools/probe_dx_flicker.py      # attract demo + play, 16k frames, no flicker
 python tools/probe_spawns.py          # Original vs Extended vs mod off, incl. attract mode
+python tools/probe_pause_pipe.py      # pause + warp pipe hold the wide view
 ```
 
 Each probe copies the executable into its own directory under `logs/` with its

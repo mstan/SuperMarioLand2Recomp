@@ -160,6 +160,29 @@ columns keep coming from the live PPU, so the pause screen and the pipe
 animation are shown exactly as the hardware draws them -- only the margins are
 frozen. `sml2_view` reports `overlay`, `held` and `held_runs`.
 
+A frozen frame carries the **world** -- geometry, the block map, the tile bytes,
+the attribute table, the bounds -- and deliberately **not the palettes**. DX
+dims the screen while the game is paused by rewriting CGB BG palette RAM through
+BCPD, and the native 160 columns, which come from the live PPU, dim with it.
+Margins composed through a frozen palette snapshot did not: the frame came out
+as a dimmed strip between two bright margins, measured at **-38 mean luminance
+over exactly columns 176..335** of a 512-wide frame with both margins
+bit-identical to the gameplay frame before them.
+
+A palette is a pure colour lookup over the tile data, so applying the live one
+to frozen tiles is both safe and the only self-consistent answer: the whole
+width then dims, brightens or fades exactly as the hardware does to the part of
+the world it is still showing. BGP/OBP0/OBP1 are live for the same reason, so
+the faithful body behaves the same way. LCDC stays frozen -- it selects which
+tile-data block an index means, so a live one would reinterpret frozen indices.
+
+`tools/probe_pause_pipe.py` holds that: per-column luminance change across a
+pause must be the same in both margins as in the native strip (measured spread
+**2.5** of about **-75**, against **38** before the fix), no margin pixel may
+carry a colour the hardware no longer has loaded (**0**), and `sml2_view`'s
+`used_bgp` / `used_bg_pal0` -- the palette the last composed frame was actually
+painted with -- must equal the live registers on both bodies.
+
 An overlay frame is still scored, and the numbers go into the rejection ring:
 measured on the fixture, pause scores **357/357** with LCDC, WY, WX, SCX and
 SCY all unchanged from the gameplay frame before it, so the old note about the

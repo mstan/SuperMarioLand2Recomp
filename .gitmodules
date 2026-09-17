@@ -1,10 +1,10 @@
 [submodule "gb-recompiled"]
 	path = gb-recompiled
-	url = git@github.com:mstan/gbrecompiled.git
+	url = https://github.com/mstan/gbrecompiled.git
 	ignore = all
 [submodule "recomp-ui"]
 	path = recomp-ui
-	url = git@github.com:mstan/recomp-ui.git
+	url = https://github.com/mstan/recomp-ui.git
 	ignore = all
 [submodule "disasm/marioland2"]
 	path = disasm/marioland2

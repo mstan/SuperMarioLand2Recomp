@@ -25,6 +25,7 @@ Requires a native Windows Python (CREATE_NO_WINDOW).
 """
 import json
 import shutil
+import statistics
 import sys
 from pathlib import Path
 
@@ -40,6 +41,81 @@ STATE = FIXTURES / "dx_pause_pipe_repro.state1"
 JUMPS = ",".join(f"{f}:A:18" for f in range(2620, 3400, 36))
 PLAY_ROUTE = (f"60:S:4,140:S:4,220:S:4,{ENTER_FRAME}:A:4,"
               f"{PLAY_FRAME}:R:900," + JUMPS)
+
+
+NATIVE_LEFT, NATIVE_RIGHT = 176, 336     # the native strip inside a 512 view
+
+
+def read_ppm(path):
+    b = path.read_bytes()
+    fields, i = [], 0
+    while len(fields) < 4:
+        while b[i:i + 1].isspace():
+            i += 1
+        start = i
+        while not b[i:i + 1].isspace():
+            i += 1
+        fields.append(b[start:i])
+    i += 1
+    w, h = int(fields[1]), int(fields[2])
+    return w, h, b[i:i + w * h * 3]
+
+
+def palette_colours(hex_str):
+    """The RGB888 the renderer produces for each CGB palette entry."""
+    raw = bytes.fromhex(hex_str)
+    out = set()
+    for i in range(0, len(raw), 2):
+        v = raw[i] | (raw[i + 1] << 8)
+        out.add(((v & 31) * 255 // 31, ((v >> 5) & 31) * 255 // 31,
+                 ((v >> 10) & 31) * 255 // 31))
+    return out
+
+
+def column_luma(px, w, h, x):
+    t = 0
+    for y in range(h):
+        o = (y * w + x) * 3
+        t += px[o] * 299 + px[o + 1] * 587 + px[o + 2] * 114
+    return t / (h * 1000)
+
+
+def dim_uniformity(before, after):
+    """Whatever pause does to the colours, it must do across the WHOLE width.
+
+    DX dims the screen on pause by rewriting BG palette RAM. The native 160
+    columns come from the live PPU and dim with it; margins drawn through a
+    frozen palette snapshot did not, which showed as a dimmed strip between two
+    bright margins. Comparing the per-column luminance change either side of the
+    strip catches exactly that, and is blind to what the scene happens to
+    contain.
+    """
+    w, h, a = read_ppm(before)
+    w2, h2, b = read_ppm(after)
+    assert (w, h) == (w2, h2), (w, h, w2, h2)
+    delta = [column_luma(b, w, h, x) - column_luma(a, w, h, x) for x in range(w)]
+    left = statistics.fmean(delta[:NATIVE_LEFT])
+    native = statistics.fmean(delta[NATIVE_LEFT:NATIVE_RIGHT])
+    right = statistics.fmean(delta[NATIVE_RIGHT:])
+    return dict(left_margin=round(left, 1), native=round(native, 1),
+                right_margin=round(right, 1),
+                spread=round(max(left, native, right) - min(left, native, right), 1))
+
+
+def margin_colours_are_live(ppm, bg_hex, obj_hex):
+    """Every pixel the compositor painted must come from the palette the
+    hardware has loaded RIGHT NOW -- not from a snapshot taken before the game
+    rewrote it. Exact, and independent of what the scene contains."""
+    w, h, px = read_ppm(ppm)
+    live = palette_colours(bg_hex) | palette_colours(obj_hex) | {(0, 0, 0)}
+    stale = {}
+    for y in range(h):
+        for x in list(range(NATIVE_LEFT)) + list(range(NATIVE_RIGHT, w)):
+            o = (y * w + x) * 3
+            c = (px[o], px[o + 1], px[o + 2])
+            if c not in live:
+                stale[c] = stale.get(c, 0) + 1
+    return stale
 
 
 class PausePipe(Probe):
@@ -68,14 +144,36 @@ class PausePipe(Probe):
         shutil.copy2(STATE, self.folder / "logs/probe.state")
 
 
-def pause_cycle(p):
+def pause_cycle(p, shots=None):
     """Start, hold a while, Start again. Returns flips spent."""
     before = p.view()["flips"]
+    if shots is not None:
+        p.command("sml2_capture")
+        shutil.copy2(p.folder / "logs/probe.ppm", shots[0])
     p.buttons(0x80)
     p.step(4)
     p.buttons(0)
     p.step(60)
     paused = p.view()
+    # Exact, content-free version of the same claim: whatever palette the
+    # hardware is using for the native strip this frame, the compositor must
+    # have composed the margins with it -- not with the one it froze.
+    live_bgp = int(p.command("ppu_state")["BGP"], 16)
+    live_hw = p.command("hw_state")
+    live_pal0 = (int(live_hw["bg_palette"][0:4], 16) if live_hw.get("bg_palette")
+                 else None)
+    assert paused["used_bgp"] == live_bgp, (
+        "the margins were composed with a stale BGP", paused["used_bgp"], live_bgp)
+    if live_pal0 is not None:
+        want = (live_pal0 >> 8) | ((live_pal0 & 0xFF) << 8)   # hw_state is big-endian hex
+        assert paused["used_bg_pal0"] == want, (
+            "the margins were composed with a stale CGB palette",
+            paused["used_bg_pal0"], want)
+    if shots is not None:
+        p.command("sml2_capture")
+        shutil.copy2(p.folder / "logs/probe.ppm", shots[1])
+        hw = p.command("hw_state")
+        shots.append(dict(bg=hw.get("bg_palette", ""), obj=hw.get("obj_palette", "")))
     p.buttons(0x80)
     p.step(4)
     p.buttons(0)
@@ -94,16 +192,31 @@ def run_dx():
         start = p.view()
         assert start["mode"] == 4 and start["wide"] == 1 and start["valid"] == 1, start
 
-        flips, paused, resumed = pause_cycle(p)
+        shots_dir = ROOT / "logs/pause-pipe"
+        shots_dir.mkdir(parents=True, exist_ok=True)
+        shots = [shots_dir / "probe-before-pause.ppm", shots_dir / "probe-paused.ppm"]
+        flips, paused, resumed = pause_cycle(p, shots)
         assert paused["mode"] == 8, ("Start did not pause", paused)
         assert paused["wide"] == 1, ("the view narrowed on pause", paused)
         assert paused["overlay"] == "mode", paused
+
+        # Whatever pause does to the colours must happen across the whole width.
+        uniform = dim_uniformity(shots[0], shots[1])
+        assert uniform["spread"] <= 6.0, (
+            "pause changed the native strip and the margins differently -- the "
+            "margins are being drawn through a stale palette", uniform)
+        pal = shots[2]
+        stale = margin_colours_are_live(shots[1], pal["bg"], pal["obj"])
+        assert not stale, (
+            "margin pixels painted with colours the hardware no longer has "
+            "loaded", dict(list(stale.items())[:6]))
         assert resumed["wide"] == 1 and resumed["valid"] == 1, resumed
         assert flips == 0, ("pause cost wide<->native transitions", flips)
         pause_result = dict(flips=flips, paused_mode=paused["mode"],
                             paused_wide=paused["wide"], held=paused["held"],
                             held_runs=paused["held_runs"],
-                            paused_score=paused["score"])
+                            paused_score=paused["score"],
+                            dim_uniformity=uniform, stale_margin_colours=len(stale))
 
         # Pipe: reload the same state and walk into it.
         p.command("sml2_load")
@@ -150,11 +263,20 @@ def run_faithful():
         p.run_to(PLAY_FRAME + 400)
         start = p.view()
         assert start["mode"] == 4 and start["wide"] == 1, start
-        flips, paused, resumed = pause_cycle(p)
+        shots_dir = ROOT / "logs/pause-pipe"
+        shots_dir.mkdir(parents=True, exist_ok=True)
+        shots = [shots_dir / "probe-faithful-before-pause.ppm",
+                 shots_dir / "probe-faithful-paused.ppm"]
+        flips, paused, resumed = pause_cycle(p, shots)
         assert paused["mode"] == 8, ("Start did not pause", paused)
         assert paused["wide"] == 1, ("the view narrowed on pause", paused)
         assert resumed["wide"] == 1 and resumed["valid"] == 1, resumed
         assert flips == 0, ("pause cost wide<->native transitions", flips)
+        # Reported, not asserted, on this body: the faithful route has Mario
+        # running when Start is pressed, so the scene scrolls between the two
+        # captures and a per-column comparison measures the motion. The exact
+        # claim is covered by the palette assertions in pause_cycle().
+        uniform = dim_uniformity(shots[0], shots[1])
 
         # Walk right pressing Down, and if a transition happens it must be free.
         before = p.view()
@@ -178,6 +300,7 @@ def run_faithful():
                  and f["frame"] > before["frame"]]
         assert not model, ("an overlay narrowed the view on the faithful body", model)
         return dict(pause_flips=flips, paused_mode=paused["mode"],
+                    dim_uniformity=uniform,
                     transition_frames_seen=transitions,
                     total_flips=after["flips"], held=after["held"],
                     held_runs=after["held_runs"], flip_events=flip_events)

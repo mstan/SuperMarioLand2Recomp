@@ -190,15 +190,29 @@ typedef struct {
  * player registers the wrong content. */
 #define SML2_FALLBACK_DEBOUNCE 6
 
-/* Exactly the state render() and draw_sprite() read. Copied on every accepted
- * frame, copied back while debouncing. */
+/* What a frozen frame carries: the WORLD -- geometry, the block map, the tile
+ * bytes, the attribute table, the bounds. Deliberately NOT the palettes.
+ *
+ * DX dims the screen when the game is paused, by rewriting CGB BG palette RAM
+ * through BCPD. The native 160 columns come from the live PPU and dim with it;
+ * margins composed through a frozen palette snapshot do not, and the frame came
+ * out as a dimmed strip between two bright margins -- measured at -38 mean
+ * luminance over exactly columns 176..335 of a 512-wide frame, with both
+ * margins bit-identical to the gameplay frame before it.
+ *
+ * A palette is a pure colour lookup over the tile data, so applying the LIVE
+ * one to frozen tiles is both safe and the only self-consistent answer: the
+ * whole width then dims, brightens or fades exactly as the hardware does to the
+ * part of the world it is still showing. The same argument covers the DMG
+ * registers, so BGP/OBP0/OBP1 stay live too and the faithful body behaves the
+ * same way. LCDC stays frozen -- it selects which tile-data block an index
+ * means, so a live one would reinterpret frozen indices. */
 typedef struct {
     int cgb, attr_ok;
     int cam_x, cam_y, left, top, view_left, view_width;
     int extra_left, extra_right, bound_left, bound_right, count;
-    uint8_t lcdc, scx, scy, wx, wy, bgp, obp0, obp1;
+    uint8_t lcdc, scx, scy, wx, wy;
     uint8_t vram[VRAM_SIZE * 2];
-    uint8_t bg_pal[64], obj_pal[64];
     uint8_t oam[OAM_SIZE];
     uint8_t map[SML2_MAP_SIZE];
     uint8_t blockdef[SML2_BLOCKDEF_SIZE];
@@ -1096,10 +1110,10 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
     OP(cgb); OP(attr_ok); OP(cam_x); OP(cam_y); OP(left); OP(top); \
     OP(view_left); OP(view_width); OP(extra_left); OP(extra_right); \
     OP(bound_left); OP(bound_right); OP(count); OP(lcdc); OP(scx); OP(scy); \
-    OP(wx); OP(wy); OP(bgp); OP(obp0); OP(obp1)
+    OP(wx); OP(wy)
 
 #define SML2_FRAME_ARRAYS(OP) \
-    OP(vram); OP(bg_pal); OP(obj_pal); OP(oam); OP(map); OP(blockdef); \
+    OP(vram); OP(oam); OP(map); OP(blockdef); \
     OP(box); OP(attr_tile)
 
 static void frame_save(void) {
@@ -1806,6 +1820,10 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
         "\"pillarbox_model\":%u,\"debounce\":%d,"
         "\"overlay\":\"%s\",\"held\":%u,\"held_runs\":%u,"
+        /* The palette the LAST COMPOSED frame was painted with. A hold freezes
+         * the world but must never freeze this, or the margins stop following
+         * a pause dim or a fade the native strip is already showing. */
+        "\"used_bgp\":%u,\"used_bg_pal0\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
@@ -1825,6 +1843,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.pillarbox_model, SML2_FALLBACK_DEBOUNCE,
         s.overlay > 0 && s.overlay < SML2_REJ_COUNT ? k_reject_name[s.overlay] : "",
         s.held, s.held_runs,
+        s.bgp, (unsigned)(s.bg_pal[0] | (s.bg_pal[1] << 8)),
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],

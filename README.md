@@ -1,3 +1,5 @@
+> *Dedicated to my good friend and mentor, Julien.*
+
 # Super Mario Land 2: 6 Golden Coins — Recompiled
 
 Static recompilation of the Game Boy title *Super Mario Land 2 - 6 Golden Coins
@@ -19,6 +21,25 @@ The ROM is **not** included; supply your own at
 `roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb`. That is the only
 ROM this build accepts, for either body — the DX image is derived from it and is
 never asked for.
+
+## Screenshots
+
+| Faithful (Game Boy) | DX color mod (Game Boy Color) |
+|---|---|
+| ![Faithful, native](docs/screenshots/faithful-native.png) | ![DX color, native](docs/screenshots/dx-native.png) |
+
+Adaptive widescreen, faithful body at 32:9:
+
+![Faithful body, adaptive widescreen 32:9](docs/screenshots/faithful-32x9.png)
+
+Adaptive widescreen with the DX color mod, 32:9 and 21:9:
+
+![DX color, adaptive widescreen 32:9](docs/screenshots/dx-widescreen-32x9-scroll.png)
+
+![DX color, adaptive widescreen 21:9](docs/screenshots/dx-widescreen-21x9-scroll.png)
+
+Every frame above is the game's own output composited by the recomp: the centre 160 pixels are the
+hardware PPU, the margins are rebuilt from the same level data the game is running.
 
 ## Build (Windows, MSYS2 MinGW64 first on PATH)
 

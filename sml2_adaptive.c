@@ -847,10 +847,18 @@ static int validate_scene(GBContext *ctx) {
      * swaps in font tiles), and holding the proven frame is always right and
      * never draws anything unproven. */
     if (s.overlay) REJECT(s.overlay);
-    /* Fail closed on what is drawn. The old 95% tile threshold is gone: a
-     * pixel-exact question does not want a tolerance, and the debounce already
-     * absorbs the one-frame transients it used to cover. */
-    if (total <= 0 || phit != total) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
+    /* Fail closed on what is drawn, at the tolerance the tile gate always had.
+     *
+     * Changing the QUANTITY from "the tile byte matches" to "the cell paints
+     * the same" is what fixes the warp pipe. Dropping the TOLERANCE with it was
+     * a mistake, measured: the ROM has more direct writers than block $7F --
+     * one erases a block to four copies of tile $FF without the block map
+     * recording it -- and on the faithful body's attract demo four such cells
+     * paint genuinely differently for hundreds of consecutive frames. At 100%
+     * that pillarboxed the view 16 times over a 16000-frame run, which is the
+     * regression this gate exists to prevent. 353/357 is 98.9%; the threshold
+     * that always covered this class still covers it. */
+    if (total <= 0 || phit * 100 < total * 95) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
     /* Fail closed on colour: a single wrong attribute in the native window
      * means the derivation is wrong somewhere, so no margin is trustworthy. */
     if (s.cgb && !s.attr_ok) { s.gate_attr_fail++; REJECT(SML2_REJ_NOTABLE); }

@@ -281,6 +281,15 @@ Level-1 route:
 The 10 remaining transitions are the demo entering and leaving gameplay: 5
 recoveries, 4 `mode`, 1 `transition`.
 
+### Pause and pipes
+
+Reported from live play on the DX body and reproduced from the savestate
+fixture in `recomp/fixtures/` (`tools/probe_pause_pipe.py`): pressing Start
+pillarboxed the view, and walking into a warp pipe pillarboxed it again until
+the sub-room settled. Neither was a DX-specific model failure -- the pause frame
+and the sub-room both score 357/357 -- and both are fixed for both bodies by
+holding the view through overlay scenes. See `ADAPTIVE.md`.
+
 ### Bindings, V1.0 vs DX
 
 The one binding the hack moved is the actor draw routine:

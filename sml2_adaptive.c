@@ -30,6 +30,7 @@
 #define SML2_MODE            0xFF9Bu   /* hGameMode                                */
 #define SML2_MODE_PLAY       0x04u
 #define SML2_MODE_DEATH      0x09u
+#define SML2_MODE_PAUSE      0x08u   /* Start: an overlay, not a new scene       */
 #define SML2_BONUS_ROOM      0xA28Bu   /* & 0xF0 -> bonus/minigame engine, no scroll */
 #define SML2_TRANSITION      0xA20Eu   /* pipe/door transition in flight            */
 #define SML2_GAMEPLAY_LCDC   0xE3u
@@ -192,7 +193,7 @@ typedef struct {
 /* Exactly the state render() and draw_sprite() read. Copied on every accepted
  * frame, copied back while debouncing. */
 typedef struct {
-    int cgb, attr_ok, mode;
+    int cgb, attr_ok;
     int cam_x, cam_y, left, top, view_left, view_width;
     int extra_left, extra_right, bound_left, bound_right, count;
     uint8_t lcdc, scx, scy, wx, wy, bgp, obp0, obp1;
@@ -228,6 +229,25 @@ static struct {
     unsigned gate_reason[SML2_REJ_COUNT];
     int wide;              /* presentation decision after debouncing        */
     int fail_run;          /* consecutive rejected frames                   */
+    /* ---- overlay scenes -----------------------------------------------
+     * Pause and a pipe/door transition do not replace the world, they draw
+     * over it: the level RAM, the camera and the bounds are all still the
+     * ones the last accepted frame was composed from, and the game is about
+     * to hand them straight back. Narrowing for them is the wrong answer
+     * twice over -- it pillarboxes on every Start press, and the pipe
+     * transition simply outlasts the debounce (measured: ~24 frames against a
+     * 6-frame window, so every pipe cost two transitions).
+     *
+     * While an overlay is in effect the view is HELD on the last proven-good
+     * frame for as long as it lasts, with no expiry, and the debounce counter
+     * is held at zero so a genuine failure afterwards still gets its full
+     * window. The native 160 columns keep coming from the live PPU, so the
+     * pause screen and the pipe animation are shown exactly as the hardware
+     * draws them -- only the margins are frozen. */
+    int overlay;           /* SML2_REJ_MODE (pause) / _TRANSITION, or 0     */
+    int holding;           /* the previous frame was held                   */
+    unsigned held;         /* frames held wide on an overlay                */
+    unsigned held_runs;    /* distinct overlays held through                */
     unsigned debounced;    /* frames shown wide on last-good margins        */
     unsigned narrowed;     /* frames actually pillarboxed                   */
     /* Of those, the ones pillarboxed because the MODEL failed rather than
@@ -691,12 +711,22 @@ static int validate_scene(GBContext *ctx) {
     s.gate_frames++;
     s.mode = peek(ctx, SML2_MODE);
 #define REJECT(r) do { gate_reject(ctx, (r)); return 0; } while (0)
-    if (s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH) REJECT(SML2_REJ_MODE);
+    /* Classify the overlay scenes FIRST, so that whichever check ends up
+     * refusing the frame, snapshot() still knows the world underneath is the
+     * one it already proved. */
+    s.overlay = 0;
+    if (s.mode == SML2_MODE_PAUSE) s.overlay = SML2_REJ_MODE;
+    else if (peek(ctx, SML2_TRANSITION)) s.overlay = SML2_REJ_TRANSITION;
+
+    if (!s.overlay && s.mode != SML2_MODE_PLAY && s.mode != SML2_MODE_DEATH)
+        REJECT(SML2_REJ_MODE);
     if (ctx->ram_bank != SML2_LEVEL_RAM_BANK) REJECT(SML2_REJ_RAMBANK);
     if (peek(ctx, SML2_BONUS_ROOM) & 0xF0u) REJECT(SML2_REJ_BONUS);
-    if (peek(ctx, SML2_TRANSITION)) REJECT(SML2_REJ_TRANSITION);
-    if (s.lcdc != SML2_GAMEPLAY_LCDC) REJECT(SML2_REJ_LCDC);
-    if (s.wy != SML2_HUD_WY || s.wx != SML2_HUD_WX) REJECT(SML2_REJ_WINDOW);
+    /* The pause screen rebuilds the window layer and repoints LCDC, so these
+     * two say nothing about the world while it is up. */
+    if (!s.overlay && s.lcdc != SML2_GAMEPLAY_LCDC) REJECT(SML2_REJ_LCDC);
+    if (!s.overlay && (s.wy != SML2_HUD_WY || s.wx != SML2_HUD_WX))
+        REJECT(SML2_REJ_WINDOW);
     if (s.cam_x < SML2_CAM_CENTRE_X || s.cam_x >= SML2_MAP_COLS * 16) REJECT(SML2_REJ_CAMERA);
     if (s.cam_y < SML2_CAM_CENTRE_Y || s.cam_y >= SML2_MAP_ROWS * 16) REJECT(SML2_REJ_CAMERA);
 
@@ -762,6 +792,11 @@ static int validate_scene(GBContext *ctx) {
     s.attr_total = atotal;
     s.attr_prio_diff = aprio;
     s.gate_scene++;
+    /* An overlay scored: the numbers are in the ring, but the frame is still
+     * refused -- the world may be intact while VRAM is not (the pause screen
+     * swaps in font tiles), and holding the proven frame is always right and
+     * never draws anything unproven. */
+    if (s.overlay) REJECT(s.overlay);
     if (total <= 0 || hit * 100 < total * 95) { s.gate_tile_fail++; REJECT(SML2_REJ_TILE); }
     /* Fail closed on colour: a single wrong attribute in the native window
      * means the derivation is wrong somewhere, so no margin is trustworthy. */
@@ -1058,7 +1093,7 @@ static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
 }
 
 #define SML2_FRAME_FIELDS(OP) \
-    OP(cgb); OP(attr_ok); OP(mode); OP(cam_x); OP(cam_y); OP(left); OP(top); \
+    OP(cgb); OP(attr_ok); OP(cam_x); OP(cam_y); OP(left); OP(top); \
     OP(view_left); OP(view_width); OP(extra_left); OP(extra_right); \
     OP(bound_left); OP(bound_right); OP(count); OP(lcdc); OP(scx); OP(scy); \
     OP(wx); OP(wy); OP(bgp); OP(obp0); OP(obp1)
@@ -1156,8 +1191,19 @@ static void snapshot(GBContext *ctx) {
     s.valid = validate_scene(ctx);
     if (s.valid) {
         s.fail_run = 0;
+        s.holding = 0;
         s.wide = 1;                     /* recover instantly */
+    } else if (s.overlay && s_good_valid && s.wide) {
+        /* Held: the scene is drawn over a world we already proved. No expiry
+         * and no debounce credit spent. */
+        if (!s.holding) s.held_runs++;
+        s.holding = 1;
+        s.fail_run = 0;
+        s.held++;
+        frame_restore();
+        return;
     } else {
+        s.holding = 0;
         s.fail_run++;
         /* Hold the wide view on the last proven-good margins until the run of
          * rejections is long enough to be a real scene change. */
@@ -1415,6 +1461,8 @@ static void reset(GBContext *ctx) {
     s_good_valid = 0;
     s.wide = 0;
     s.fail_run = 0;
+    s.holding = 0;
+    s.overlay = 0;
     s.valid = 0;
     s.count = s.build_count = 0;
     s.bound_left = s.bound_right = 0;
@@ -1587,14 +1635,15 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
             "{\"id\":%d,\"ok\":true,\"seq\":%u,\"first\":%u,\"dropped\":%u,"
             "\"frames\":%u,\"scored\":%u,\"flips\":%u,\"fallbacks\":%u,"
             "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
-            "\"pillarbox_model\":%u,\"attr_byte_diff\":%u,"
+            "\"pillarbox_model\":%u,\"held\":%u,\"held_runs\":%u,"
+            "\"attr_byte_diff\":%u,"
             "\"reasons\":{%s}}",
             id, seq, first,
             seq > SML2_GATE_LOG_CAP && (unsigned)since < seq - SML2_GATE_LOG_CAP
                 ? (seq - SML2_GATE_LOG_CAP) - (unsigned)since : 0u,
             s.gate_frames, s.gate_scene, s.flips, s.fallbacks,
             s.debounced, s.narrowed, s.narrowed_model, s.pillarbox_model,
-            s.attr_byte_diff, reasons);
+            s.held, s.held_runs, s.attr_byte_diff, reasons);
         for (unsigned k = first; k < seq; k++) {
             const Sml2GateEvent *e = &s.gate_log[k % SML2_GATE_LOG_CAP];
             char cells[512];
@@ -1756,6 +1805,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         "\"attr_byte_diff\":%u,\"wide\":%d,\"fail_run\":%d,"
         "\"debounced\":%u,\"narrowed\":%u,\"narrowed_model\":%u,"
         "\"pillarbox_model\":%u,\"debounce\":%d,"
+        "\"overlay\":\"%s\",\"held\":%u,\"held_runs\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
@@ -1773,6 +1823,8 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.flips, s.gate_frames, s.gate_log_seq, s.attr_byte_diff,
         s.wide, s.fail_run, s.debounced, s.narrowed, s.narrowed_model,
         s.pillarbox_model, SML2_FALLBACK_DEBOUNCE,
+        s.overlay > 0 && s.overlay < SML2_REJ_COUNT ? k_reject_name[s.overlay] : "",
+        s.held, s.held_runs,
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],

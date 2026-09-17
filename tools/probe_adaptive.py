@@ -122,6 +122,47 @@ class Probe:
     def view(self):
         return self.command("sml2_view")
 
+    def ensure_gameplay(self, budget=3000, chunk=30):
+        """Advance until the game is in scrolling gameplay, re-entering a level
+        if it is sitting on the world map.
+
+        A probe must never assume that frame N of a blind input route reaches a
+        particular place. It stopped being true when Extended enemy spawns
+        became the default: more enemies are alive at once, so the route's jump
+        cadence no longer clears them, Mario dies, and every later assertion is
+        measuring the world map. Drive from the game's own state instead.
+        """
+        spent = 0
+        while spent < budget:
+            v = self.view()
+            if v["mode"] == 4 and v["valid"] == 1:
+                return v
+            # $FF9B $0C is the world map: A enters the level under the cursor.
+            self.buttons(0x10 if v["mode"] in (12, 25, 26) else 0)
+            self.step(2)
+            self.buttons(0)
+            self.step(chunk)
+            spent += chunk + 2
+        v = self.view()
+        raise RuntimeError(
+            "never reached scrolling gameplay within %d frames: %s"
+            % (budget, {k: v[k] for k in ("frame", "mode", "reject", "valid",
+                                          "camera_x", "camera_y", "camera_live",
+                                          "left", "top", "scy", "score",
+                                          "paint_score", "bounds")}))
+
+    def gameplay_samples(self, count, stride=30, budget=6000):
+        """`count` samples of scrolling gameplay, skipping whatever else the
+        game does in between. Returns the views it actually scored."""
+        out, spent = [], 0
+        while len(out) < count and spent < budget:
+            self.step(stride)
+            spent += stride
+            v = self.view()
+            if v["mode"] == 4 and v["valid"] == 1:
+                out.append(v)
+        return out
+
     def capture(self, name):
         self.command("sml2_capture")
         shutil.copy2(self.folder / "logs/probe.ppm", self.folder / (name + ".ppm"))
@@ -168,7 +209,9 @@ def main():
         # 21 x 17 cells: the 18th BG tile row is behind the status-bar window
         # on every gameplay frame and the two bodies disagree about what they
         # leave in it, so it is not scored (sml2_adaptive.c validate_scene).
-        assert entry["score"][0] == entry["score"][1] == 357, entry
+        # paint_score is the gate; score is the raw tile-byte agreement, which
+        # the ROM's direct block stamps legitimately dent (see sml2_map.h).
+        assert entry["paint_score"][0] == entry["paint_score"][1] == 357, entry
         # Level 1 starts hard against the left wall: the view cannot be centred,
         # so it sits flush on the level's left bound with no black padding.
         assert entry["view_left"] == entry["bounds"][0] == 0, entry
@@ -215,7 +258,8 @@ def main():
             f"no actor lived past the vanilla {VANILLA_CULL_HALF}px cull window (max {far})")
         assert scroll[-1]["widened"] > 0, "activation/cull window override never fired"
         assert all(v["valid"] == 1 for v in scroll), "fell back to native while scrolling"
-        assert all(v["score"][0] == v["score"][1] for v in scroll), "block map decode drifted"
+        assert all(v["paint_score"][0] == v["paint_score"][1] for v in scroll), (
+            "block map decode drifted")
         p.capture("scrolled-32x9")
 
         # Save/load replay equality at 32:9. Take control away from the

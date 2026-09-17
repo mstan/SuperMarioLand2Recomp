@@ -259,11 +259,12 @@ static struct {
      * pause screen and the pipe animation are shown exactly as the hardware
      * draws them -- only the margins are frozen. */
     int overlay;           /* SML2_REJ_MODE (pause) / _TRANSITION, or 0     */
-    /* Incremental scroll tracking: the previous frame's answer, so a stale
-     * camera cannot put the decode on the wrong 256-pixel page. */
-    int scroll_tracked, scroll_cam_x, scroll_cam_y, scroll_left, scroll_top;
+    /* Scroll-anchor hazard detector: the register moving further than an int8
+     * while the camera stands still is the only case the anchor cannot express.
+     * Measured 0 across every probe run; see the note in snapshot(). */
+    int scroll_tracked, scroll_cam_x, scroll_cam_y;
     uint8_t scroll_scx, scroll_scy;
-    unsigned scroll_offpage;   /* frames the camera would have got wrong     */
+    unsigned scroll_offpage;   /* frames the camera anchor could not express */
     int holding;           /* the previous frame was held                   */
     unsigned held;         /* frames held wide on an overlay                */
     unsigned held_runs;    /* distinct overlays held through                */
@@ -1227,45 +1228,44 @@ static void snapshot(GBContext *ctx) {
     s.cam_prev_ok = 1;
     /* ---- where the screen's top-left actually is in the world -------------
      *
-     * The camera ($FFC8/$FFCA) is the usual answer, corrected onto the scroll
-     * register the hardware is displaying, because screen shake moves SCY
-     * without moving the camera. That correction is a single int8_t delta, and
-     * it can only express +-127.
+     * The camera ($FFC8/$FFCA), corrected onto the scroll register the hardware
+     * is displaying, because screen shake moves SCY without moving the camera.
+     * The correction is a single int8_t delta and can only express +-127.
      *
-     * A warp-pipe dive breaks it. The game scrolls SCY from 120 to 252 while
-     * leaving $FFC8 at its pre-dive value, a shift of 132, which wraps to -124
-     * and lands the decode a whole 256-pixel block row away from the world.
-     * The 21-column score cannot see that -- it compares cells that alias
-     * modulo 256 -- so it passed anyway, and the margins would have been drawn
-     * from the wrong part of the level.
+     * DISPROVED, and recorded so it is not re-tried: that limit looked like the
+     * reason the warp-pipe dive had to freeze its margins. During a dive SCY
+     * runs 120 -> 252 while $FFC8 appeared pinned at its pre-dive value, a
+     * shift of 132 that would wrap. It is not pinned -- the "stale camera" was
+     * this module's own frozen frame being reported back, because cam_x/cam_y
+     * are part of the state a hold restores. Measured per frame across a real
+     * dive with the live camera read separately: the camera moves every frame
+     * and the anchor below is correct on all 80 of them (scroll_offpage 0).
      *
-     * So the register is followed INCREMENTALLY from the previous frame, where
-     * per-frame motion is single digits and always fits, and the camera is
-     * re-anchored to only when it is the thing that moved. Both candidates
-     * satisfy (uint8_t)origin == register by construction; they differ only in
-     * which 256-pixel page, and that is exactly the question the camera stops
-     * being able to answer mid-dive. */
-    int cam_left = s.cam_x - SML2_CAM_CENTRE_X;
-    int cam_top = s.cam_y - SML2_CAM_CENTRE_Y;
-    cam_left += (int8_t)(uint8_t)(s.scx - (uint8_t)cam_left);
-    cam_top += (int8_t)(uint8_t)(s.scy - (uint8_t)cam_top);
-    int cam_moved = !s.scroll_tracked ||
-                    s.cam_x != s.scroll_cam_x || s.cam_y != s.scroll_cam_y;
-    if (cam_moved) {
-        s.left = cam_left;
-        s.top = cam_top;
+     * An incremental version -- follow the register from the previous frame and
+     * re-anchor only when the camera moves -- was written, measured and
+     * reverted: it latches a stale 256-pixel page across a level reload, where
+     * the scroll teleports while the camera happens to hold still, and the
+     * compositor came back with left = -256 for a camera at 80. The hazard it
+     * was meant to cover has never been observed; the regression it caused was
+     * immediate. What is kept is the DETECTOR: scroll_offpage counts frames
+     * where the camera stood still while the register moved further than an
+     * int8 can express, which is the only situation in which this anchor could
+     * be wrong. It has stayed 0. */
+    s.left = s.cam_x - SML2_CAM_CENTRE_X;
+    s.top = s.cam_y - SML2_CAM_CENTRE_Y;
+    s.left += (int8_t)(uint8_t)(s.scx - (uint8_t)s.left);
+    s.top += (int8_t)(uint8_t)(s.scy - (uint8_t)s.top);
+    if (s.scroll_tracked && s.cam_x == s.scroll_cam_x && s.cam_y == s.scroll_cam_y) {
+        int dx = (int)s.scx - (int)s.scroll_scx;
+        int dy = (int)s.scy - (int)s.scroll_scy;
+        if (dx > 127 || dx < -127 || dy > 127 || dy < -127) s.scroll_offpage++;
     } else {
-        s.left = s.scroll_left + (int8_t)(uint8_t)(s.scx - s.scroll_scx);
-        s.top = s.scroll_top + (int8_t)(uint8_t)(s.scy - s.scroll_scy);
-        if (s.left != cam_left || s.top != cam_top) s.scroll_offpage++;
+        s.scroll_scx = s.scx;
+        s.scroll_scy = s.scy;
     }
     s.scroll_tracked = 1;
     s.scroll_cam_x = s.cam_x;
     s.scroll_cam_y = s.cam_y;
-    s.scroll_scx = s.scx;
-    s.scroll_scy = s.scy;
-    s.scroll_left = s.left;
-    s.scroll_top = s.top;
 
     /* The sprite list built during the frame that is about to be shown. */
     s.count = s.build_count;

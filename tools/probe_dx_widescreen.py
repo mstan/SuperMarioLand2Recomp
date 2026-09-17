@@ -203,10 +203,11 @@ def run_body(name, dx, aspect="32:9", capture_dir=None):
         samples = []
         for frame in SAMPLE_FRAMES:
             p.run_to(frame)
-            view = p.view()
-            if view["valid"] != 1:
-                samples.append(dict(frame=frame, view=view, skipped="not gameplay"))
-                continue
+            # Never assume frame N of a blind route is in a level: with the
+            # Extended-spawn default Mario can be dead and on the world map by
+            # now. Drive from the game's own state and assert on the frames
+            # actually scored.
+            view = p.ensure_gameplay()
             derived = derive_check(p, view)
             tag = f"{name}-f{frame}"
             p.capture(tag)
@@ -221,7 +222,7 @@ def run_body(name, dx, aspect="32:9", capture_dir=None):
             samples.append(dict(frame=frame, view=view, derived=derived))
 
             assert view["width"] == 512, view
-            assert view["score"] == [CELLS, CELLS], view
+            assert view["paint_score"] == [CELLS, CELLS], view
             # This dump is read one frame after the compositor's own snapshot,
             # so a handful of just-streamed cells may differ; the zero-skew
             # version of the check is the gate itself, asserted above.
@@ -247,10 +248,9 @@ def run_body(name, dx, aspect="32:9", capture_dir=None):
         # Keep running and require the colour gate to hold every sample, not
         # just at the chosen frames: a single wrong attribute anywhere would
         # have dropped `valid` to 0 and shown a narrow native frame instead.
-        scroll = []
-        for _ in range(24):
-            p.step(30)
-            scroll.append(p.view())
+        scroll = p.gameplay_samples(24, stride=30)
+        assert len(scroll) >= 12, (
+            "could not collect enough scrolling-gameplay samples", len(scroll))
         results["scroll_valid"] = sum(1 for v in scroll if v["valid"] == 1)
         results["scroll_frames"] = len(scroll)
         results["scroll_attr_perfect"] = sum(
@@ -271,6 +271,8 @@ def run_body(name, dx, aspect="32:9", capture_dir=None):
         assert scroll[-1]["gate_tile_fail"] == 0, scroll[-1]
         assert scroll[-1]["gate_attr_fail"] == 0, scroll[-1]
         results["scroll_tilesets"] = sorted({s["tileset"] for s in scroll})
+        # Every sample is a gameplay frame by construction, so this is now a
+        # statement about the compositor rather than about the route.
         assert results["scroll_valid"] == results["scroll_frames"], (
             "compositor fell back to native mid-scroll", scroll)
         if dx:

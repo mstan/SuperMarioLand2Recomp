@@ -1,0 +1,187 @@
+# Release build for the three supported desktop targets.
+#
+# snesrecomp's game repos have no release workflow to mirror — releases there
+# are cut by hand from a developer machine (see SuperMarioWorldRecomp's
+# RELEASE.md). This is the first one, so it deliberately runs exactly the same
+# three scripts a developer runs locally rather than reimplementing them in
+# YAML; if a job here is green, the local command is green too.
+#
+# ROM POLICY. A GB recomp game has no committed source tree: generated/ and
+# generated_dx/ come out of gbrecomp and need the cart. CI therefore needs the
+# supported ROM, and it can only come from a repository secret:
+#
+#     gh secret set SML2_ROM_B64 --repo mstan/SuperMarioLand2Recomp \
+#        < <(base64 -w0 "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb")
+#
+# Every job decodes it, checks CRC32 D5EC24E4, and refuses to continue if the
+# secret is absent or wrong. The ROM never reaches an artifact: each packaging
+# script sweeps its output for ROM-shaped files and for that CRC before writing
+# an archive.
+#
+# SUBMODULES. gb-recompiled and recomp-ui are public
+# (github.com/mstan/gbrecompiled, github.com/mstan/recomp-ui) and .gitmodules
+# points at https:// URLs, so actions/checkout clones them with the default
+# token. Should either ever be made private, this workflow needs a deploy key
+# (ssh-key: on actions/checkout) instead.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stamp (defaults to the VERSION file)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: windows-x64 zip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-zlib
+
+      - name: Stage the supported ROM
+        shell: pwsh
+        env:
+          ROM_B64: ${{ secrets.SML2_ROM_B64 }}
+        run: |
+          if (-not $env:ROM_B64) {
+            throw 'Secret SML2_ROM_B64 is not set; generation cannot run. See .github/workflows/release.yml.'
+          }
+          New-Item -ItemType Directory -Path roms -Force | Out-Null
+          [IO.File]::WriteAllBytes(
+            "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb",
+            [Convert]::FromBase64String($env:ROM_B64))
+
+      - name: Build and package
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.version }}'
+          # Not named $args: that is an automatic variable in PowerShell.
+          $scriptArgs = @('-ToolRoot', '${{ steps.msys2.outputs.msys2-location }}\mingw64\bin')
+          if ($version) { $scriptArgs += @('-Version', $version) }
+          ./make_release.ps1 @scriptArgs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: release-stage/*.zip
+          if-no-files-found: error
+
+  linux:
+    name: linux-x86_64 AppImage
+    # Oldest supported runner: an AppImage links against the build host's
+    # glibc, so building on the newest Ubuntu would refuse to start on
+    # anything older.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libsdl2-dev libgl1-mesa-dev \
+            patchelf file desktop-file-utils imagemagick python3 curl
+
+      - name: Stage the supported ROM
+        env:
+          ROM_B64: ${{ secrets.SML2_ROM_B64 }}
+        run: |
+          if [ -z "${ROM_B64:-}" ]; then
+            echo "Secret SML2_ROM_B64 is not set; generation cannot run." >&2
+            exit 1
+          fi
+          mkdir -p roms
+          printf '%s' "$ROM_B64" | base64 -d > "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
+
+      - name: Build and package
+        run: bash build-linux.sh ${{ inputs.version && format('--version {0}', inputs.version) || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: release-linux/*.AppImage
+          if-no-files-found: error
+
+  macos:
+    name: macos arm64 dmg
+    # NOTE: build-macos.sh has never been run on a Mac (see RELEASE.md). Treat
+    # the first green run of this job as the bring-up, not as a regression gate.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: brew install cmake ninja sdl2 dylibbundler create-dmg
+
+      - name: Stage the supported ROM
+        env:
+          ROM_B64: ${{ secrets.SML2_ROM_B64 }}
+        run: |
+          if [ -z "${ROM_B64:-}" ]; then
+            echo "Secret SML2_ROM_B64 is not set; generation cannot run." >&2
+            exit 1
+          fi
+          mkdir -p roms
+          printf '%s' "$ROM_B64" | base64 -D > "roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb"
+
+      - name: Build and package
+        run: bash build-macos.sh --arch arm64 --zip ${{ inputs.version && format('--version {0}', inputs.version) || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: |
+            release-macos/*.dmg
+            release-macos/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: draft release
+    # Only for a tag push, and only once every platform produced an artifact.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+
+      # Draft, never published automatically: the release notes and a real
+      # play-test on at least one platform are a human step (RELEASE.md).
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          find assets -type f -print
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --title "${GITHUB_REF_NAME}" \
+            --notes 'Draft — fill in the release notes before publishing.' \
+            $(find assets -type f | sort)

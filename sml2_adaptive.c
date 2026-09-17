@@ -1645,37 +1645,29 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true}", id);
         return 1;
     }
-    if (!strcmp(cmd, "sml2_save") || !strcmp(cmd, "sml2_load")) {
-        int ok = !strcmp(cmd, "sml2_save")
-                     ? gb_context_save_state_file(s.ctx, "logs/probe.state")
-                     : gb_context_load_state_file(s.ctx, "logs/probe.state");
-        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":%s}", id, ok ? "true" : "false");
-        return 1;
-    }
-    if (!strcmp(cmd, "sml2_capture")) {
-        static uint32_t pixels[GB_CUSTOM_FRAME_SIZE];
-        int width = gb_custom_width > GB_SCREEN_WIDTH ? gb_custom_width : GB_SCREEN_WIDTH;
-        const uint32_t *native = ((GBPPU *)s.ctx->ppu)->rgb_framebuffer;
-        if (!render(s.ctx, pixels, width, native)) {
-            for (int i = 0; i < width * GB_SCREEN_HEIGHT; i++) pixels[i] = 0xFF000000u;
-            for (int y = 0; y < GB_SCREEN_HEIGHT; y++)
-                memcpy(pixels + (size_t)y * width + (width - GB_SCREEN_WIDTH) / 2,
-                       native + (size_t)y * GB_SCREEN_WIDTH,
-                       GB_SCREEN_WIDTH * sizeof(uint32_t));
-        }
-        FILE *f = fopen("logs/probe.ppm", "wb");
-        if (f) {
-            fprintf(f, "P6\n%d %d\n255\n", width, GB_SCREEN_HEIGHT);
-            for (int i = 0; i < width * GB_SCREEN_HEIGHT; i++) {
-                uint8_t rgb[3] = { (uint8_t)(pixels[i] >> 16), (uint8_t)(pixels[i] >> 8),
-                                   (uint8_t)pixels[i] };
-                fwrite(rgb, 1, 3, f);
-            }
-            fclose(f);
-        }
-        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":%s}", id, f ? "true" : "false");
-        return 1;
-    }
+    /* sml2_save / sml2_load / sml2_capture are SUPERSEDED by the engine's
+     * generic save_state / load_state / screenshot commands (see
+     * gb-recompiled/docs/DEBUG_SERVER.md). They survive only as thin aliases
+     * that pin the historic default paths, so the existing probes and any
+     * older script keep working; there is one implementation, in the engine.
+     * New code should call the generic commands and pass its own path. */
+    if (!strcmp(cmd, "sml2_save"))
+        return gb_debug_server_save_state(
+            id, strstr(json ? json : "", "\"path\"") ? json
+                                                    : "{\"path\":\"logs/probe.state\"}");
+    if (!strcmp(cmd, "sml2_load"))
+        return gb_debug_server_load_state(
+            id, strstr(json ? json : "", "\"path\"") ? json
+                                                    : "{\"path\":\"logs/probe.state\"}");
+    if (!strcmp(cmd, "sml2_capture"))
+        /* recompose:1 keeps the old semantics exactly -- the compositor is
+         * re-run against current VRAM/OAM rather than the last presented
+         * frame being reused, which probe_dx_widescreen.py relies on when it
+         * re-reads sml2_view right after the capture. */
+        return gb_debug_server_screenshot(
+            id, strstr(json ? json : "", "\"path\"")
+                    ? json
+                    : "{\"path\":\"logs/probe.ppm\",\"recompose\":1}");
     if (!strcmp(cmd, "sml2_flip_log")) {
         unsigned seq = s.flip_log_seq;
         unsigned first = seq > SML2_FLIP_LOG_CAP ? seq - SML2_FLIP_LOG_CAP : 0;

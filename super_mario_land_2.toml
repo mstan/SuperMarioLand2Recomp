@@ -31,3 +31,15 @@ emit_comments = true
 # whichever body the launcher's Mods page selected. See DX.md and
 # gb-recompiled/runtime/include/gb_body.h.
 multi_body = true
+
+# The horizontal despawn compare in Mario's fireball update, 00:327E `cp $C0`.
+# Its inputs are all modulo 256 (camera LOW byte, slot X LOW byte, +80, and
+# $F0), so a wider reach is not expressible by lying about them -- only by the
+# compared immediate. sml2_adaptive.c installs gbrt_imm_override_hook only when
+# the widescreen mod is on, and it hands the ROM's own $C0 straight back unless
+# Enemy spawns = Extended, so the default build behaves exactly as the literal
+# did. See sml2_map.h (SML2_FB_CP_X_PC) and ADAPTIVE.md.
+[[imm_override]]
+bank = 0
+addr = 0x327E
+note = "fireball horizontal despawn window (Extended reach)"

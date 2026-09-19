@@ -282,10 +282,16 @@ static int option_get(void *ctx, const char *package_id, const char *feature_id,
         out->choice_count = SPAWN_COUNT;
         COPY(out->id, "spawns");
         COPY(out->label, "Enemy spawns");
+        /* The option covers both things that are measured against the ORIGINAL
+         * screen edge rather than the visible one: where an enemy is spawned,
+         * and how far Fire Mario's fireballs travel before the game destroys
+         * them. Both change gameplay, both are off under Original, so they
+         * belong behind the same switch. */
         COPY(out->description,
-             "Original keeps the game's own spawn timing, so enemies appear at the "
-             "original screen edge inside the wide view. Extended spawns them at the "
-             "edge of what you can actually see, which changes gameplay.");
+             "Original keeps the game's own timing, so enemies appear at the "
+             "original screen edge inside the wide view and fireballs vanish "
+             "there too. Extended moves both out to the edge of what you can "
+             "actually see, which changes gameplay.");
         COPY(out->value, spawn_modes[mode]);
         COPY(out->default_value, spawn_modes[SML2_SPAWNS_EXTENDED]);
         return 1;

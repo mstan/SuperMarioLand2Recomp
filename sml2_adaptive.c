@@ -113,6 +113,30 @@
 #define SML2_SIDE_RIGHT      0
 #define SML2_SIDE_LEFT       1
 
+/* Every fireball death, from the moment the body booted. A fireball lives well
+ * under a second, so "run it, then ask where it died" is a race no probe can
+ * win; this is the window it queries instead. */
+#define SML2_FB_RING         32
+enum {
+    SML2_FB_CAUSE_VANILLA = 0, /* the ROM's own $C0..$CF window matched      */
+    SML2_FB_CAUSE_EXTENDED,    /* forced at view edge + SML2_FIREBALL_OVERSHOOT */
+    SML2_FB_CAUSE_FAILCLOSED,  /* gate off with the slot already past vanilla */
+    /* Everything the horizontal compare is not: a block or an enemy hit in
+     * 00:332E / 00:2FED, or the vertical twin of the despawn window at
+     * 00:328F. Seen by diffing the slots, not by a hook, so no cause is
+     * missing from the ring. */
+    SML2_FB_CAUSE_OTHER,
+    SML2_FB_CAUSE_COUNT
+};
+static const char *const k_fb_cause_name[SML2_FB_CAUSE_COUNT] = {
+    "vanilla", "extended", "failclosed", "other"
+};
+
+typedef struct {
+    unsigned frame;
+    int slot, x, y, rel, dir, view_left, view_width, cam_x, cause;
+} Sml2FireballDeath;
+
 typedef struct {
     int x, y;            /* world pixels, top-left of the 8x8 piece */
     uint8_t tile, attr;
@@ -265,6 +289,7 @@ static struct {
     int scroll_tracked, scroll_cam_x, scroll_cam_y;
     uint8_t scroll_scx, scroll_scy;
     unsigned scroll_offpage;   /* frames the camera anchor could not express */
+    unsigned emitted;          /* pieces captured from the shared emitter    */
     int holding;           /* the previous frame was held                   */
     unsigned held;         /* frames held wide on an overlay                */
     unsigned held_runs;    /* distinct overlays held through                */
@@ -356,6 +381,27 @@ static struct {
     struct { int frame, cam_x, edge, prev_edge, x, addr, stepped; }
         spawn_ring[SML2_SPAWN_RING];
     unsigned spawn_ring_n;
+    /* ---- Mario's fireballs, Extended ---------------------------------------
+     * The ledger for the 00:327E despawn override and the emitter's OAM copy.
+     * Always on whenever the compositor is installed, in BOTH policies, so
+     * "where did it die" is a query against a ring rather than a race with a
+     * probe: a fireball's whole life is under a second and every death is a
+     * single frame. Original records the ROM's own deaths and overrides
+     * nothing, which is what makes the two runs comparable. */
+    unsigned fb_kept;        /* compare forced NOT-equal: the slot lives on  */
+    unsigned fb_killed;      /* compare forced equal at the widened boundary */
+    unsigned fb_vanilla;     /* compare left alone (the immediate passed on) */
+    unsigned fb_failclosed;  /* gate off and the slot was already past vanilla */
+    unsigned fb_unmatched;   /* 00:327E reached with no identifiable slot    */
+    unsigned fb_hidden;      /* emitter OAM copy pushed off-screen (aliased) */
+    unsigned fb_deaths;
+    Sml2FireballDeath fb_ring[SML2_FB_RING];
+    /* Last frame's slot state, so a death the override did NOT decide is still
+     * an entry in the ring. fb_claimed marks the slot the override destroyed
+     * this frame, which stops the diff reporting it twice. */
+    uint8_t fb_prev_live[SML2_FIREBALL_SLOTS], fb_claimed[SML2_FIREBALL_SLOTS];
+    int fb_prev_x[SML2_FIREBALL_SLOTS], fb_prev_y[SML2_FIREBALL_SLOTS];
+    int fb_prev_dir[SML2_FIREBALL_SLOTS], fb_prev_rel[SML2_FIREBALL_SLOTS];
     int cam_prev, cam_prev_ok;
     Sml2Sprite sprite[SML2_MAX_SPRITES], build[SML2_MAX_SPRITES];
     uint8_t opaque[GB_CUSTOM_FRAME_SIZE];
@@ -1056,10 +1102,289 @@ static void spawn_account(GBContext *ctx) {
 #undef SPAWN_PEEK
 }
 
+/* Every sprite the shared emitter draws, captured in WORLD coordinates.
+ *
+ * The emitter has only an 8-bit screen X to work with, so without this the
+ * things it draws -- Mario, his fireballs, enemy fire, thrown items -- stop
+ * existing at the edge of the native 160 columns no matter how wide the
+ * composed view is. Tapped at 01:52BA, the instant after the routine has read
+ * both screen coordinates and before it starts writing OAM, so everything the
+ * decode needs is live. See sml2_map.h for the disassembly.
+ *
+ * Unwrapping the screen X is safe because the ROM refuses to keep anything
+ * whose screen X reaches $C0: a value at or above $D0 can only mean "left of
+ * the screen". A fireball is better than that -- its own table carries the
+ * real 16-bit world position -- so when a piece matches a live fireball slot
+ * the exact coordinates are used instead, which is what lets the Extended
+ * boundary below push it past 255 without aliasing.
+ *
+ * The metasprite index is part of the match, not decoration: 00:3293 only ever
+ * asks the emitter for $B0..$B7 and nothing else does, so it separates a
+ * fireball from Mario even on the frame their coordinates alias mod 256 --
+ * which Extended makes reachable, because it lets a fireball get a whole
+ * 256-pixel page away from him. Returns the slot base, or 0. */
+static unsigned fireball_match(GBContext *ctx, unsigned idx, unsigned sx,
+                               unsigned sy, int *wx, int *wy) {
+    if (idx < SML2_FB_INDEX_LO || idx > SML2_FB_INDEX_HI) return 0;
+    for (int i = 0; i < SML2_FIREBALL_SLOTS; i++) {
+        unsigned base = SML2_FIREBALL + (unsigned)i * SML2_FIREBALL_STRIDE;
+        if (!peek(ctx, base)) continue;
+        int y = peek(ctx, base + 1) | (peek(ctx, base + 2) << 8);
+        int x = peek(ctx, base + 3) | (peek(ctx, base + 4) << 8);
+        if ((unsigned)((x - s.cam_x + 80) & 0xFF) != sx) continue;
+        if ((unsigned)((y - s.cam_y + 70) & 0xFF) != sy) continue;
+        if (wx) *wx = x;
+        if (wy) *wy = y;
+        return base;
+    }
+    return 0;
+}
+
+static void capture_emitter(GBContext *ctx) {
+    unsigned sx = peek(ctx, SML2_EMIT_SCREEN_X);
+    unsigned sy = peek(ctx, SML2_EMIT_SCREEN_Y);
+    unsigned idx = peek(ctx, SML2_EMIT_INDEX);
+    int pal = peek(ctx, SML2_EMIT_PALETTE) != 0;
+
+    /* Where the emitter's origin is in the world. */
+    int ox, oy;
+    if (!fireball_match(ctx, idx, sx, sy, &ox, &oy)) {
+        ox = s.left + (int)(sx >= SML2_EMIT_X_NEGATIVE ? (int)sx - 256 : (int)sx);
+        oy = s.top + (int)(sy >= SML2_EMIT_X_NEGATIVE ? (int)sy - 256 : (int)sy);
+        ox -= 8;   /* the ROM's screen X is already the OAM X minus the 8 px
+                    * hardware offset that draw_sprite() undoes for OAM pieces */
+        oy -= 16;
+    } else {
+        /* Exact 16-bit world position: the emitter's origin is the OAM origin,
+         * so undo the same hardware offsets. */
+        ox = ox - 8;
+        oy = oy - 16;
+    }
+
+    /* The pointer table is at $4000 of whichever bank the emitter is running
+     * out of -- bank 1 on V1.0, $2C or $2D on DX. */
+    int bank = (int)ctx->rom_bank;
+    unsigned entry = SML2_EMIT_TABLE + idx * 2u;
+    unsigned de = (unsigned)rom_byte(ctx, bank, entry) |
+                  ((unsigned)rom_byte(ctx, bank, entry + 1) << 8);
+    if (de < 0x4000u || de >= 0x8000u) return;
+    for (int n = 0; n < SML2_MAX_PIECES && de + 3 < 0x8000u; n++, de += 4) {
+        uint8_t yraw = rom_byte(ctx, bank, de);
+        if (yraw == SML2_FRAME_HIDDEN) break;
+        if (s.build_count >= SML2_MAX_SPRITES) break;
+        Sml2Sprite *sp = &s.build[s.build_count++];
+        sp->y = oy + (int8_t)yraw;
+        sp->x = ox + (int8_t)rom_byte(ctx, bank, de + 1);
+        sp->tile = rom_byte(ctx, bank, de + 2);
+        sp->attr = rom_byte(ctx, bank, de + 3);
+        if (pal) sp->attr |= OAM_PALETTE;      /* 01:52D0 `set 4,a` */
+        s.captures++;
+        s.emitted++;
+    }
+}
+
+/* ---- Mario's fireballs: the Extended horizontal range ---------------------
+ *
+ * Vanilla destroys a fireball the moment its EIGHT-BIT screen X lands in
+ * $C0..$CF (00:327E, see sml2_map.h): 32 px past the right edge of the native
+ * 160 columns, 49 px past the left one. In a composed view that is somewhere
+ * in the middle of the picture, so Fire Mario's shots wink out of existence
+ * halfway across the screen.
+ *
+ * Nothing about that test can be widened by lying about its inputs. It reads
+ * the camera's LOW BYTE and the slot's X LOW BYTE, subtracts, adds 80 and
+ * masks to a nibble -- every intermediate is modulo 256, so the "distance"
+ * the ROM is measuring simply does not have the range to express the answer.
+ * The one expressible change is the compared immediate, which is why this is
+ * the project's first [[imm_override]] site: at 00:327E the ROM is handed A
+ * itself (Z set -> it runs its own destroy path, unchanged) or A^$10 (Z clear
+ * -> it keeps the slot), and the decision is taken here, in 16-bit world
+ * space, against the view the compositor is actually presenting.
+ *
+ * Fail-closed, exactly like the spawn-edge override: with Original selected
+ * the hook is never installed at all, so gbrt_imm_override8() hands back the
+ * ROM's own $C0 and the build is byte-identical vanilla. With Extended
+ * selected but the scene gate refusing the frame, the immediate is passed on
+ * untouched UNLESS the slot is already outside the range vanilla can reach --
+ * territory only this override could have created -- in which case it is
+ * destroyed at once rather than left to alias back across the screen.
+ */
+
+/* The slot 00:3261 is working on. HL is the ROM's own cursor and is exact;
+ * the $A25D/$A25F copies it just made are the fallback for an entry the
+ * dispatcher reached some other way. Returns the slot base, or 0. */
+static unsigned fireball_slot(GBContext *ctx) {
+    unsigned hl = ctx->hl;
+    if (hl >= SML2_FIREBALL + SML2_FB_HL_BIAS && hl < SML2_FIREBALL_END) {
+        unsigned base = hl - SML2_FB_HL_BIAS;
+        if ((base - SML2_FIREBALL) % SML2_FIREBALL_STRIDE == 0 && peek(ctx, base))
+            return base;
+    }
+    uint8_t xlo = peek(ctx, SML2_FB_SCRATCH_X), ylo = peek(ctx, SML2_FB_SCRATCH_Y);
+    uint8_t dir = peek(ctx, SML2_FB_DIR);
+    for (int i = 0; i < SML2_FIREBALL_SLOTS; i++) {
+        unsigned base = SML2_FIREBALL + (unsigned)i * SML2_FIREBALL_STRIDE;
+        if (!peek(ctx, base)) continue;
+        if (peek(ctx, base + 3) == xlo && peek(ctx, base + 1) == ylo &&
+            peek(ctx, base + 5) == dir)
+            return base;
+    }
+    return 0;
+}
+
+static int fireball_world_x(GBContext *ctx, unsigned base) {
+    return peek(ctx, base + 3) | (peek(ctx, base + 4) << 8);
+}
+
+/* The true, unwrapped screen X of a world coordinate, measured against the
+ * camera the ROM itself is using this instant (its LIVE $FFCA, not the
+ * composed frame's copy, which a hold may have frozen). */
+static int fireball_rel(GBContext *ctx, int world_x) {
+    return world_x - peek16(ctx, SML2_CAM_X) + SML2_CAM_CENTRE_X;
+}
+
+static void fireball_note(int frame, int slot, int x, int y, int rel, int dir,
+                          int cam_x, int cause) {
+    Sml2FireballDeath *d = &s.fb_ring[s.fb_deaths++ % SML2_FB_RING];
+    d->frame = (unsigned)frame;
+    d->slot = slot;
+    d->x = x;
+    d->y = y;
+    d->rel = rel;
+    d->dir = dir;
+    d->view_left = s.view_left;
+    d->view_width = s.view_width;
+    d->cam_x = cam_x;
+    d->cause = cause;
+}
+
+static void fireball_record(GBContext *ctx, unsigned base, int rel, int cause) {
+    int slot = (int)((base - SML2_FIREBALL) / SML2_FIREBALL_STRIDE);
+    fireball_note(s.frame, slot, fireball_world_x(ctx, base),
+                  peek(ctx, base + 1) | (peek(ctx, base + 2) << 8), rel,
+                  peek(ctx, base + 5), peek16(ctx, SML2_CAM_X), cause);
+    if (slot >= 0 && slot < SML2_FIREBALL_SLOTS) s.fb_claimed[slot] = 1;
+}
+
+/* Close the ring over every cause. The override knows only about the deaths it
+ * decides; a fireball that hits a block or an enemy (00:332E / 00:2FED) or
+ * falls into the vertical twin of the despawn window (00:328F) is destroyed
+ * with no hook anywhere near it. Diffing the two slots once a frame catches
+ * those too, and reports the LAST LIVE position rather than the zeroed slot --
+ * which is the number anyone asking "where did it die" wants. Always on, in
+ * both spawn policies. */
+static void fireball_account(GBContext *ctx) {
+    /* An EXPLICIT cart RAM bank, for the reason spawn_account() gives: this
+     * runs at PPU line 0, where ctx->ram_bank is whatever the guest last left
+     * mapped and not necessarily the level's. Measured with the live bank
+     * instead: the active byte read back 0 on every frame of a 41-frame
+     * fireball, so no slot ever appeared live and not one death was recorded.
+     * The override's own reads are different -- they happen inside 00:3261,
+     * where the ROM is reading the very same bytes through the very same bank
+     * -- so those stay on peek(). */
+#define FB_PEEK(a) peek_eram_bank(ctx, SML2_LEVEL_RAM_BANK, (a))
+    int cam = peek16(ctx, SML2_CAM_X);
+    for (int i = 0; i < SML2_FIREBALL_SLOTS; i++) {
+        unsigned base = SML2_FIREBALL + (unsigned)i * SML2_FIREBALL_STRIDE;
+        int live = FB_PEEK(base) != 0;
+        if (s.fb_prev_live[i] && !live && !s.fb_claimed[i])
+            /* The slot was emptied by the PREVIOUS frame's logic; this runs
+             * at the top of the next one, after s.frame has already advanced. */
+            fireball_note(s.frame - 1, i, s.fb_prev_x[i], s.fb_prev_y[i],
+                          s.fb_prev_rel[i], s.fb_prev_dir[i], cam,
+                          SML2_FB_CAUSE_OTHER);
+        s.fb_claimed[i] = 0;
+        s.fb_prev_live[i] = (uint8_t)live;
+        if (live) {
+            s.fb_prev_x[i] = FB_PEEK(base + 3) | (FB_PEEK(base + 4) << 8);
+            s.fb_prev_y[i] = FB_PEEK(base + 1) | (FB_PEEK(base + 2) << 8);
+            s.fb_prev_dir[i] = FB_PEEK(base + 5);
+            s.fb_prev_rel[i] = s.fb_prev_x[i] - cam + SML2_CAM_CENTRE_X;
+        }
+    }
+#undef FB_PEEK
+}
+
+/* [[imm_override]] chokepoint. See the block comment above; `orig` is the
+ * ROM's $C0 and `a` is the value it is about to be compared against. */
+static uint8_t imm_override(GBContext *ctx, uint8_t bank, uint16_t pc, uint8_t orig) {
+    if (bank != SML2_FB_CP_X_BANK || pc != SML2_FB_CP_X_PC) return orig;
+    uint8_t a = ctx->a;                  /* (screen X & $F0), set by 00:327C */
+    unsigned base = fireball_slot(ctx);
+    if (!base) { s.fb_unmatched++; return orig; }
+    int x = fireball_world_x(ctx, base);
+    int rel = fireball_rel(ctx, x);
+
+    /* Original is pure observation: the same immediate goes back, so the ROM
+     * runs bit-for-bit as it would with no hook at all, and the ring still
+     * answers "where did vanilla kill it" for the A/B against a mod-off run. */
+    if (!s.spawn_extend) {
+        s.fb_vanilla++;
+        if (a == orig) fireball_record(ctx, base, rel, SML2_FB_CAUSE_VANILLA);
+        return orig;
+    }
+
+    if (!s.wide || !s.valid || gb_custom_width <= GB_SCREEN_WIDTH) {
+        /* Fail closed, exactly as the spawn-edge override does: the gate has
+         * not proved this frame's world, so the widened boundary is unproven
+         * too. Vanilla's own reach is screen X $C0..$CF as a signed offset --
+         * [-64, -49] on the left, [192, 207] on the right -- so anything
+         * outside [-64, 207] is a slot only the widened boundary could have
+         * produced. Handing that back to an 8-bit test would let it alias
+         * across the screen instead of dying, so it dies now. */
+        if (rel < -64 || rel > 207) {
+            s.fb_failclosed++;
+            fireball_record(ctx, base, rel, SML2_FB_CAUSE_FAILCLOSED);
+            return a;
+        }
+        s.fb_vanilla++;
+        if (a == orig) fireball_record(ctx, base, rel, SML2_FB_CAUSE_VANILLA);
+        return orig;
+    }
+
+    /* Extended: die just past whichever edge of the COMPOSED view it left, by
+     * the same margin vanilla allows past the native right edge. */
+    if (x >= s.view_left + s.view_width + SML2_FIREBALL_OVERSHOOT ||
+        x <= s.view_left - SML2_FIREBALL_OVERSHOOT) {
+        s.fb_killed++;
+        fireball_record(ctx, base, rel, SML2_FB_CAUSE_EXTENDED);
+        return a;                                  /* Z set: the ROM destroys */
+    }
+    s.fb_kept++;
+    return (uint8_t)(a ^ 0x10);                    /* Z clear: the ROM keeps  */
+}
+
+/* Does the emitter's 8-bit screen X tell the truth about this piece?
+ *
+ * Extended lets a fireball reach a world X more than 256 px from the camera,
+ * at which point the ROM's `screenX = X - camX + 80` wraps and the OAM entry
+ * it writes lands somewhere else entirely -- inside the native strip, which
+ * step 3 of the compositor blits from the hardware framebuffer, so the ghost
+ * would be real pixels. The host's own tap already draws the piece from the
+ * slot's 16-bit world position, so the guest's copy is pure surplus: answer
+ * the emitter's $FFC4 read with $F0 and every OAM entry it writes lands at
+ * OAM Y >= $E0, which the hardware never shows and render()'s OAM pass skips.
+ * Nothing else reads $FFC4 (01:52B5 `ld b,a`, used only by `add b`), the
+ * ROM's own Y despawn test at 00:328F is a different instruction and is left
+ * alone, and the OAM cursor advances exactly as it would have. */
+static int fireball_aliased(GBContext *ctx, unsigned base) {
+    int rel = fireball_rel(ctx, fireball_world_x(ctx, base));
+    return rel < 0 || rel > 255;
+}
+
 static void read_tap(GBContext *ctx, uint16_t address) {
+    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return;
+    if (address == SML2_EMIT_SCREEN_X) {
+        static const uint16_t pcs[] = SML2_EMIT_PCS;
+        for (unsigned i = 0; i < sizeof pcs / sizeof pcs[0]; i++) {
+            if (ctx->pc != pcs[i] && ctx->pc != (uint16_t)(pcs[i] - 2)) continue;
+            capture_emitter(ctx);
+            return;
+        }
+        return;
+    }
     if (address != SML2_TAP_ADDR || !is_draw_bank(ctx->rom_bank)) return;
     if (ctx->pc != SML2_TAP_PC && ctx->pc != SML2_TAP_PC - 2) return;
-    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return;
     capture_actor(ctx);
 }
 
@@ -1084,10 +1409,31 @@ static void read_tap(GBContext *ctx, uint16_t address) {
  *    that puts such an actor at screen X 0xB8 makes the ROM's own 03:4025 test
  *    drop it -- which also keeps the 40-entry OAM buffer from overflowing --
  *    and the host draws it in the margin instead.
+ * 4. The same hazard for the shared emitter, when Extended has pushed one of
+ *    Mario's fireballs more than a screen's width from the camera: the guest's
+ *    OAM copy is answered off-screen so the hardware cannot draw the wrapped
+ *    ghost. See fireball_aliased(). Original never reaches that distance and
+ *    never installs this either.
  */
 static uint8_t read_override(GBContext *ctx, uint16_t address, uint8_t value) {
     if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return value;
     unsigned pc = ctx->pc;
+
+    if (address == SML2_EMIT_SCREEN_Y && s.spawn_extend) {
+        static const uint16_t pcs[] = SML2_EMIT_PCS;
+        for (unsigned i = 0; i < sizeof pcs / sizeof pcs[0]; i++) {
+            /* `ldh a,[$FFC4]` is five bytes before the tap PC; the generated
+             * code reports the next instruction, the interpreter the read. */
+            if (pc != (unsigned)(pcs[i] - 3) && pc != (unsigned)(pcs[i] - 5)) continue;
+            unsigned base = fireball_match(ctx, peek(ctx, SML2_EMIT_INDEX),
+                                           peek(ctx, SML2_EMIT_SCREEN_X), value,
+                                           NULL, NULL);
+            if (!base || !fireball_aliased(ctx, base)) return value;
+            s.fb_hidden++;
+            return SML2_EMIT_Y_OFFSCREEN;
+        }
+        return value;
+    }
 
     if (address >= SML2_ACT_UPPER_HI && address <= SML2_CULL_LOWER_LO &&
         ctx->rom_bank == 2 && (pc == SML2_WINDOW_COPY_PC || pc == SML2_WINDOW_COPY_PC + 1)) {
@@ -1225,6 +1571,7 @@ static void snapshot(GBContext *ctx) {
     /* Always on, in both policies: charge the previous frame's scanner run
      * before anything this frame can move the cursor again. */
     spawn_account(ctx);
+    fireball_account(ctx);
     /* A camera that moved further than the scanner's own 8 px quantum in one
      * frame -- a warp, a room change, a state load -- is a discontinuity the
      * ramp cannot bridge, so re-engage from vanilla rather than chase it. */
@@ -1494,6 +1841,14 @@ static int render(GBContext *ctx, uint32_t *out, int width, const uint32_t *nati
     for (int i = OAM_SIZE / 4 - 1; i >= 0; i--) {
         const uint8_t *e = s.oam + i * 4;
         if (!e[0] || e[0] >= 160) continue;
+        /* X is bounded for the same reason Y already is: an entry the hardware
+         * clips away entirely contributes nothing to the native strip, so
+         * placing it at `s.left + X - 8` in a margin asserts a world position
+         * the 8-bit OAM X never carried. Both taps capture those sprites in
+         * real world coordinates; what is left here is the ROM's own wrap --
+         * a fireball leaving to the LEFT is written at OAM X $CC..$FB, which
+         * without this bound is redrawn as a ghost in the RIGHT margin. */
+        if (e[1] < SML2_OAM_X_FIRST || e[1] > SML2_OAM_X_LAST) continue;
         Sml2Sprite sp = { s.left + e[1] - 8, s.top + e[0] - 16, e[2], e[3] };
         draw_sprite(out, width, sp);
     }
@@ -1567,6 +1922,12 @@ static void reset(GBContext *ctx) {
     s.cam_prev_ok = 0;
     s.spawn_cursor = -1;
     s.scan_seen_edge[0] = s.scan_seen_edge[1] = -1;
+    /* A state load rewinds $A880 too, so a slot that was live on the abandoned
+     * timeline must not be diffed against the restored one -- that would post a
+     * death to the ring that never happened. The ring's earlier entries stay:
+     * they record what did happen, on the timeline they happened on. */
+    memset(s.fb_prev_live, 0, sizeof s.fb_prev_live);
+    memset(s.fb_claimed, 0, sizeof s.fb_claimed);
     spawn_forget();
 }
 
@@ -1606,6 +1967,12 @@ void sml2_adaptive_init(GBContext *ctx) {
     gb_custom_reset = reset;
     gb_custom_read_tap = read_tap;
     gb_custom_read_override = read_override;
+    /* Installed in BOTH spawn policies. With Original selected imm_override()
+     * hands the ROM's own immediate straight back -- the same byte the literal
+     * would have been, so the guest runs bit-for-bit as it does with no hook
+     * -- and only fills the death ring, which is what makes an Original run
+     * comparable with a mod-off one. */
+    gbrt_imm_override_hook = imm_override;
     fprintf(stderr,
             "[ADAPTIVE] Super Mario Land 2 compositor installed, width=%d, spawns=%s\n",
             gb_custom_requested_width, s.spawn_extend ? "extended" : "original");
@@ -1676,6 +2043,90 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
             id, strstr(json ? json : "", "\"path\"")
                     ? json
                     : "{\"path\":\"logs/probe.ppm\",\"recompose\":1}");
+    if (!strcmp(cmd, "sml2_sprites")) {
+        /* The composed sprite list for the frame on screen: every metasprite
+         * piece the $FFE2 tap captured in WORLD coordinates, plus what the
+         * hardware left in OAM. "The projectile is alive but not drawn" is
+         * answerable only by looking at this list next to the actor table. */
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"count\":%d,\"left\":%d,\"top\":%d,"
+            "\"view_left\":%d,\"width\":%d,\"bounds\":[%d,%d],\"captures\":%u}",
+            id, s.count, s.left, s.top, s.view_left, gb_custom_width,
+            s.bound_left, s.bound_right, s.captures);
+        for (int i = 0; i < s.count; i++)
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"i\":%d,\"x\":%d,\"y\":%d,"
+                "\"tile\":%u,\"attr\":%u,\"src\":\"tap\"}",
+                id, i, s.sprite[i].x, s.sprite[i].y, s.sprite[i].tile, s.sprite[i].attr);
+        for (int i = 0; i < OAM_SIZE / 4; i++) {
+            const uint8_t *e = s.oam + i * 4;
+            if (!e[0] || e[0] >= 160) continue;
+            /* "oam" is what render() actually composes; "oam_clipped" is an
+             * entry the hardware shows no column of, which the OAM pass
+             * declines to place in a margin. Reported rather than dropped so a
+             * probe can tell "the compositor refused it" from "it was never
+             * there". */
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"i\":%d,\"x\":%d,\"y\":%d,"
+                "\"tile\":%u,\"attr\":%u,\"oam_x\":%u,\"oam_y\":%u,\"src\":\"%s\"}",
+                id, i, s.left + e[1] - 8, s.top + e[0] - 16, e[2], e[3], e[1], e[0],
+                e[1] < SML2_OAM_X_FIRST || e[1] > SML2_OAM_X_LAST ? "oam_clipped" : "oam");
+        }
+        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"end\":true}", id);
+        return 1;
+    }
+    if (!strcmp(cmd, "sml2_fireballs")) {
+        /* The two $A880 slots as they are right now, the boundary the 00:327E
+         * override is holding them to, and the always-on death ring. A
+         * fireball's whole life is under a second, so the ring is the only
+         * honest answer to "where did it die": by the time a probe asks, the
+         * slot has been zeroed and the evidence is gone. Nothing is armed. */
+        int reach_r = s.view_left + s.view_width + SML2_FIREBALL_OVERSHOOT;
+        int reach_l = s.view_left - SML2_FIREBALL_OVERSHOOT;
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"extend\":%d,\"wide\":%d,\"valid\":%d,"
+            "\"view_left\":%d,\"view_width\":%d,\"cam_x\":%d,\"camera_live\":%d,"
+            "\"reach\":[%d,%d],\"overshoot\":%d,\"kept\":%u,\"killed\":%u,"
+            "\"vanilla\":%u,\"failclosed\":%u,\"unmatched\":%u,\"hidden\":%u,"
+            "\"deaths\":%u,\"frame\":%d}",
+            id, s.spawn_extend, s.wide, s.valid, s.view_left, s.view_width,
+            s.cam_x, s.ctx ? peek16(s.ctx, SML2_CAM_X) : 0, reach_l, reach_r,
+            SML2_FIREBALL_OVERSHOOT, s.fb_kept, s.fb_killed, s.fb_vanilla,
+            s.fb_failclosed, s.fb_unmatched, s.fb_hidden, s.fb_deaths, s.frame);
+        for (int i = 0; i < SML2_FIREBALL_SLOTS && s.ctx; i++) {
+            /* The level's cart RAM bank by name, not the live one: this answers
+             * from the debug poll, between frames, where the guest may have
+             * left any bank mapped. */
+#define FB_PEEK(a) peek_eram_bank(s.ctx, SML2_LEVEL_RAM_BANK, (a))
+            unsigned base = SML2_FIREBALL + (unsigned)i * SML2_FIREBALL_STRIDE;
+            int live = FB_PEEK(base) != 0;
+            int x = FB_PEEK(base + 3) | (FB_PEEK(base + 4) << 8);
+            int y = FB_PEEK(base + 1) | (FB_PEEK(base + 2) << 8);
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"slot\":%d,\"live\":%d,\"x\":%d,"
+                "\"y\":%d,\"dir\":%u,\"rel\":%d}",
+                id, i, live, x, y, FB_PEEK(base + 5),
+                x - peek16(s.ctx, SML2_CAM_X) + SML2_CAM_CENTRE_X);
+#undef FB_PEEK
+        }
+        unsigned first = s.fb_deaths > SML2_FB_RING ? s.fb_deaths - SML2_FB_RING : 0;
+        if ((unsigned)json_int(json, "\"since\"", 0) > first)
+            first = (unsigned)json_int(json, "\"since\"", 0);
+        for (unsigned k = first; k < s.fb_deaths; k++) {
+            const Sml2FireballDeath *f = &s.fb_ring[k % SML2_FB_RING];
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"seq\":%u,\"death\":true,\"frame\":%u,"
+                "\"slot\":%d,\"x\":%d,\"y\":%d,\"rel\":%d,\"dir\":%d,"
+                "\"cam_x\":%d,\"view_left\":%d,\"view_width\":%d,\"cause\":\"%s\"}",
+                id, k, f->frame, f->slot, f->x, f->y, f->rel, f->dir, f->cam_x,
+                f->view_left, f->view_width,
+                f->cause >= 0 && f->cause < SML2_FB_CAUSE_COUNT
+                    ? k_fb_cause_name[f->cause] : "?");
+        }
+        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"end\":true,\"seq\":%u}",
+                                 id, s.fb_deaths);
+        return 1;
+    }
     if (!strcmp(cmd, "sml2_flip_log")) {
         unsigned seq = s.flip_log_seq;
         unsigned first = seq > SML2_FLIP_LOG_CAP ? seq - SML2_FLIP_LOG_CAP : 0;
@@ -1905,14 +2356,20 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
          * one -- reading those and calling them "the camera right now" is how
          * this module twice talked itself into a wrong diagnosis. */
         "\"camera_live\":[%d,%d],\"scy_live\":%d,\"scx_live\":%d,"
-        "\"transition_flag\":%d,\"scy\":%d,\"scx\":%d,"
+        "\"transition_flag\":%d,\"scy\":%d,\"scx\":%d,\"emitted\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
         "\"spawn_unpaired\":%u,\"spawn_resets\":%u,\"spawn_cursor\":%d,"
         "\"spawn_passed\":%u,\"spawn_spawned\":%u,\"spawn_jumped\":%u,"
         "\"spawn_seek\":%u,\"spawn_stepped_over\":%u,"
-        "\"spawn_scans\":%u,\"spawn_ungated\":%u,\"frame\":%d}",
+        "\"spawn_scans\":%u,\"spawn_ungated\":%u,"
+        /* Mario's fireballs: the 00:327E override's ledger. fb_reach is the
+         * world-X boundary Extended is holding them to; sml2_fireballs has the
+         * per-death ring. */
+        "\"fb_reach\":[%d,%d],\"fb_kept\":%u,\"fb_killed\":%u,\"fb_vanilla\":%u,"
+        "\"fb_failclosed\":%u,\"fb_unmatched\":%u,\"fb_hidden\":%u,"
+        "\"fb_deaths\":%u,\"frame\":%d}",
         id, s.valid, s.mode, gb_custom_width, s.left, s.top, s.view_left, s.cam_x,
         s.cam_y, s.bound_left, s.bound_right, s.score_hit, s.score_total,
         s.attr_hit, s.attr_total, s.paint_hit, s.score_total,
@@ -1931,7 +2388,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scy : 0,
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scx : 0,
         s.ctx ? peek(s.ctx, SML2_TRANSITION) : 0,
-        s.scy, s.scx,
+        s.scy, s.scx, s.emitted,
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],
@@ -1940,6 +2397,10 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.scan_hi[SML2_SIDE_LEFT], s.scan_lo[SML2_SIDE_LEFT],
         s.scan_unpaired, s.scan_resets, s.spawn_cursor,
         s.spawn_passed, s.spawn_spawned, s.spawn_jumped, s.spawn_seek,
-        s.spawn_stepped, s.spawn_scans, s.spawn_ungated, s.frame);
+        s.spawn_stepped, s.spawn_scans, s.spawn_ungated,
+        s.view_left - SML2_FIREBALL_OVERSHOOT,
+        s.view_left + s.view_width + SML2_FIREBALL_OVERSHOOT,
+        s.fb_kept, s.fb_killed, s.fb_vanilla, s.fb_failclosed, s.fb_unmatched,
+        s.fb_hidden, s.fb_deaths, s.frame);
     return 1;
 }

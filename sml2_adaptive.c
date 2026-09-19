@@ -1676,6 +1676,32 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
             id, strstr(json ? json : "", "\"path\"")
                     ? json
                     : "{\"path\":\"logs/probe.ppm\",\"recompose\":1}");
+    if (!strcmp(cmd, "sml2_sprites")) {
+        /* The composed sprite list for the frame on screen: every metasprite
+         * piece the $FFE2 tap captured in WORLD coordinates, plus what the
+         * hardware left in OAM. "The projectile is alive but not drawn" is
+         * answerable only by looking at this list next to the actor table. */
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"count\":%d,\"left\":%d,\"top\":%d,"
+            "\"view_left\":%d,\"width\":%d,\"bounds\":[%d,%d],\"captures\":%u}",
+            id, s.count, s.left, s.top, s.view_left, gb_custom_width,
+            s.bound_left, s.bound_right, s.captures);
+        for (int i = 0; i < s.count; i++)
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"i\":%d,\"x\":%d,\"y\":%d,"
+                "\"tile\":%u,\"attr\":%u,\"src\":\"tap\"}",
+                id, i, s.sprite[i].x, s.sprite[i].y, s.sprite[i].tile, s.sprite[i].attr);
+        for (int i = 0; i < OAM_SIZE / 4; i++) {
+            const uint8_t *e = s.oam + i * 4;
+            if (!e[0] || e[0] >= 160) continue;
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":true,\"i\":%d,\"x\":%d,\"y\":%d,"
+                "\"tile\":%u,\"attr\":%u,\"oam_x\":%u,\"oam_y\":%u,\"src\":\"oam\"}",
+                id, i, s.left + e[1] - 8, s.top + e[0] - 16, e[2], e[3], e[1], e[0]);
+        }
+        gb_debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"end\":true}", id);
+        return 1;
+    }
     if (!strcmp(cmd, "sml2_flip_log")) {
         unsigned seq = s.flip_log_seq;
         unsigned first = seq > SML2_FLIP_LOG_CAP ? seq - SML2_FLIP_LOG_CAP : 0;

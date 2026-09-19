@@ -225,6 +225,129 @@ camera holds still, and the compositor returned `left = -256` for a camera at
 camera stood still while the register moved further than an `int8_t` can
 express, the only situation in which the anchor could be wrong. It has stayed 0.
 
+## Enemy spawns
+
+**Original** installs nothing. Every scanner input, every window and every
+despawn test is the ROM's own, so the game's decisions are exactly vanilla; an
+enemy simply appears inside the margin instead of walking in from off view.
+
+**Extended** (the default) widens two things, both fail-closed — the moment the
+scene gate refuses a frame, or the compositor is not composing wide, the ROM
+gets its own value back:
+
+1. **Where enemies spawn.** The spawn-scan edge moves out to the visible view
+   edge, ramped at most 8 px per scanning frame so no list entry is stepped
+   over. Details in the `read_override` comment in `sml2_adaptive.c`.
+2. **How far Mario's fireballs travel.** They now reach the edge of the
+   composed view and die 32 px past it, instead of vanishing halfway across it.
+
+### Fireballs travel to the view edge
+
+Fire Mario's shots are not `$AD00` actors. They live in their own two-slot
+table at `$A880` (stride `$10`: `+0` active, `+1/+2` world Y LE, `+3/+4` world
+X LE, `+5` direction, `$FF` = left), spawned at `00:32C1` and updated and drawn
+per slot by `00:3261`. That routine computes
+
+```
+screenX = (slotX_lo - camX_lo + 80) & $FF        ; 00:3271..00:327A
+          and $F0 / cp $C0                       ; 00:327C / 00:327E
+          jr z -> pop hl / xor a / ld [hl],a     ; 00:3280 -> 00:32BD
+```
+
+and the identical test on screen Y at `00:328F`. Landing in `$C0..$CF` destroys
+the slot. Measured, at the fireball's 3 px per frame:
+
+| | vanilla death | |
+|---|---|---|
+| right | world X = camX + **112**..127 | 32 px past the native screen's right edge |
+| left | world X = camX − **129**..144 | 49 px past its left edge |
+
+The asymmetry is the 8-bit space's, not the game's: the kill window is a fixed
+16-wide band at `$C0` and the screen is 160 columns.
+
+**Every input to that test is modulo 256** — the camera's low byte, the slot's
+low byte, `+80`, `and $F0` — so no lie about its inputs can express "512 pixels
+away". The only expressible change is the compared immediate, which makes this
+the project's first and only `[[imm_override]]` site. At `00:327E` the hook
+hands the ROM either `A` (Z set, so the ROM runs its **own** destroy path at
+`00:32BD`, unchanged) or `A ^ $10` (Z clear, so it keeps the slot), and decides
+which in 16-bit world space:
+
+```
+die  <=>  slotX >= view_left + view_width + 32      (travelling right)
+     or   slotX <= view_left - 32                   (travelling left)
+```
+
+Control flow, cycle counts and the destroy sequence stay the ROM's; only `Z`
+changes, and `00:3282` reloads `A` immediately, so the carry the compare also
+sets is dead. The Y test at `00:328F` is left completely alone. The site is
+declared in **both** `super_mario_land_2.toml` and
+`super_mario_land_2_dx.toml`: `00:324F`–`00:32C0` is byte-identical in the DX
+image, so the hack did not relocate this routine and one address serves both
+bodies.
+
+Fail-closed has a wrinkle the spawn edge does not have. A fireball the widened
+boundary has already carried past `rel` `[-64, 207]` is in territory vanilla
+cannot produce, and handing it back to an 8-bit test would let it alias across
+the screen rather than die. So when the gate is off, such a slot is destroyed
+at once; everything still inside vanilla's own reach gets the ROM's `$C0` back
+untouched.
+
+### The shared sprite emitter, and its OAM copy
+
+The `$AD00` actor draw routine is not the only thing that puts sprites on
+screen: Mario, his fireballs, enemy fire and thrown items all go through one
+shared emitter reached from `00:2CF4`, whose screen X and screen Y (`$FFC5` /
+`$FFC4`) are **eight bit**. Without help, everything it draws stops existing at
+the edge of the native 160 columns however wide the view is. It is now tapped
+(`SML2_EMIT_PCS`, the instruction after `ldh a,[$FFC5]` in each of the four
+copies the two images contain) and every piece is captured in world
+coordinates. For a fireball the tap uses the slot's own 16-bit position rather
+than unwrapping the 8-bit one, which is what lets Extended push it past 255
+without aliasing; the metasprite index (`$B0..$B7`, and nothing else uses that
+range) is part of the match, so a fireball a whole 256-pixel page away is never
+confused with Mario.
+
+That leaves the guest's **own** OAM write. Once a fireball is more than a
+screen from the camera, `screenX` wraps and the entry the emitter writes lands
+somewhere else entirely — possibly inside the native strip, which the
+compositor blits verbatim from the hardware framebuffer, so the ghost would be
+real pixels. Under Extended the emitter's `$FFC4` read is therefore answered
+with `$F0` for exactly those pieces: every OAM entry it then writes sits at
+OAM Y ≥ `$E0`, which the hardware never shows and the compositor's OAM pass
+skips. The host's world-coordinate copy is untouched, and the ROM's own Y
+despawn test — a different instruction — never sees it.
+
+Independently, the compositor's OAM pass now ignores entries outside OAM X
+`1..167`. An entry the hardware clips away entirely contributes nothing to the
+native strip, so placing it at `s.left + X - 8` in a margin asserts a world
+position the 8-bit OAM X never carried. This is what stops a fireball leaving
+to the LEFT — written at OAM X `$CC..$FB` by vanilla itself — being redrawn as
+a ghost in the RIGHT margin, and it applies in both spawn policies because it
+is a compositor bug, not a policy.
+
+### Enemy projectiles are unchanged, deliberately
+
+Enemy fire goes through the same emitter, so it is captured and drawn in the
+margins correctly — but its **range** is vanilla. It is not extended, and the
+reason is that the two cases are not symmetric:
+
+* Mario's fireball dying mid-screen is a **presentation** bug: the player sees
+  it vanish in open air at a place that means nothing. An enemy's shot that
+  reaches further is a **difficulty** change — it lets an off-view enemy hit
+  the player, which no amount of extra view makes fair.
+* Extended already spawns enemies further out. Giving their projectiles the
+  same extra reach would compound the two into a real change in how the game
+  plays, which is the line this mod does not cross.
+* Enemy projectiles are not one table with one despawn test. They are spread
+  across the actor system and several per-type routines, so "extend them too"
+  is not one binding but a survey — and the first bullet says it should not be
+  done anyway.
+
+If that is ever revisited, the same shape applies: find the per-type `cp`
+against a screen-space constant, declare it as an `[[imm_override]]` site, and
+decide in world space against `view_left`/`view_width`.
+
 ## Verified ROM bindings
 
 Read taps and overrides preserve the ROM's control flow and cycle accounting;
@@ -288,6 +411,21 @@ Status bar columns: 0 life icon, 1 `x`, 2-3 lives, 4 blank, 5 coin icon, 6 `x`,
 | Metasprite tables | `03:40B1`, `03:4F11` (selected by `$AF06`), data from `03:4201` | 4 bytes per piece `(Yoff, Xoff, tile, attr)`, terminator `$80` in Yoff; flip bits 5/6 of the actor's attribute XOR rewrite the offsets as `~v − 7` |
 | OAM shadow buffer | `$A100`–`$A19F`, DMA stub `$FFA0` | 40 entries, **no overflow guard anywhere in the ROM** |
 
+### Mario's fireballs and the shared emitter
+
+| Binding | Where | Role |
+|---|---|---|
+| Fireball table | `$A880`, stride `$10`, 2 slots | `+0` active, `+1/+2` world Y **little**-endian, `+3/+4` world X LE, `+5` direction (`$FF` = left) |
+| Fireball spawn | `00:32C1` | `hKeysPressed` bit 1 (B) and `sCurPowerup $A216 == 3`, then first free slot; position = Mario's + (`$10`, `$1C`) |
+| Fireball per-slot loop | `00:324F` | `hl` walks `$A880` by `$10` until `l == $A0`, calling `00:3261` for each live slot |
+| Fireball update + draw | `00:3261` | copies the slot's low bytes to `$A25D`/`$A25F`/`$A212`, computes 8-bit screen X and Y, draws via `00:2CF4`, then world-space collision via `00:2FED` |
+| Fireball despawn X | `00:327E` (`cp $C0`) | `(screenX & $F0) == $C0` destroys the slot. **hook** |
+| Fireball despawn Y | `00:328F` (`cp $C0`) | the same test on screen Y — never overridden |
+| Fireball motion | `00:332E` | 3 px/frame, bounces; block collision through `00:1EFA`, all world-space |
+| Fireball metasprites | `$B0`–`$B3` (right), `$B4`–`$B7` (left) | `00:3293`; index = base + `(($FF97 & 6) >> 1)`; tiles 112–115, attr `$60` |
+| Shared emitter | `00:2CF4` → `01:5297` | metasprite in the actor format (`Yoff, Xoff, tile, attr`, `$80` terminator) at screen (`$FFC5`, `$FFC4`), index `$FFC6`, palette flag `$FFC7`; both coordinates **8-bit** |
+| Emitter bodies | V1.0 `01:52B5`, `01:5E58`; DX also `2C:5D86`, `2D:5E3A` | found by the byte pattern `F0 C4 47 F0 C5 4F`; DX reaches its copies via `01:5297` → `01:465A` on `[$FFF6] & $0F`, so the tap keys on the PC and reads the `$4000` pointer table out of `ctx->rom_bank` |
+
 ### Hook sites
 
 | Hook | Kind | Scope | Effect |
@@ -296,18 +434,28 @@ Status bar columns: 0 life icon, 1 `x`, 2-3 lives, 4 blank, 5 coin icon, 6 `x`,
 | `$AF1A`–`$AF1D` | read override | bank 2, PC `$3CAA`/`$3CAB` | cull window becomes camX ± (`$A0` + that side's view margin) |
 | `$A2B1` | read override | draw bank (3 on V1.0), PC `$409E` | an actor whose true offset from the native screen is outside `[−8, 176)` is handed a scroll shadow that puts it at screen X `$B8`, so the ROM's own `03:4025` drops it |
 | `$AF12`–`$AF15` | read override | bank 2, PC `$408A`/`$4090` (right), `$40A9`/`$40AF` (left) | **Extended spawns only.** spawn-scan window becomes camX ± (`112` + that side's view margin), ramped ≤ 8 px per scanning frame |
-| `$FFE2` | read tap | draw bank (3 on V1.0), PC `$401B` | captures the metasprite in world coordinates after the ROM's state/visibility gates and before its clipping |
+| `$FFE2` | read tap | draw bank (3 on V1.0), PC `$401B` | captures the `$AD00` actor's metasprite in world coordinates, after the ROM's state/visibility gates and before its clipping |
+| `$FFC5` | read tap | any emitter body, PC after `ldh a,[$FFC5]` (`$52BA`, `$5E5D`, and on DX `$5D8B`, `$5E3F`) | captures everything the SHARED emitter draws — Mario, fireballs, enemy fire, thrown items — in world coordinates, so an 8-bit screen X stops confining them to the native 160 columns |
+| `00:327E` | **`[[imm_override]]`** | bank 0, PC `$327E` | **Extended spawns only.** the fireball despawn compare is answered with `A` (the ROM destroys the slot) or `A ^ $10` (it keeps it), decided in 16-bit world space against `view_left`/`view_width` ± 32 |
+| `$FFC4` | read override | any emitter body, PC of / after `ldh a,[$FFC4]` (tap PC − 5 / − 3) | **Extended spawns only.** a fireball piece whose 8-bit screen X has wrapped is answered `$F0`, so the guest's own OAM entry lands off-screen instead of as a ghost inside the native strip |
 
-The third hook is what makes the second one safe. `03:409F` computes screen X
-modulo 256, so an actor the widened activation keeps alive far off the native
-screen would otherwise alias back into the visible 160 columns as a ghost.
-Dropping it from the ROM's own OAM path also keeps the unguarded 40-entry OAM
-buffer from overflowing into `$A1A0+`.
+The `$A2B1` hook is what makes the activation one safe. `03:409F` computes
+screen X modulo 256, so an actor the widened activation keeps alive far off the
+native screen would otherwise alias back into the visible 160 columns as a
+ghost. Dropping it from the ROM's own OAM path also keeps the unguarded
+40-entry OAM buffer from overflowing into `$A1A0+`. The `$FFC4` hook is the
+same idea for the shared emitter, which has no drop test of its own.
 
-No `[[imm_override]]` sites were needed. The window constants are 8-bit
-immediates (`ld e,$60` / `$70` / `$A0`) that cannot express the >255 pixel
-offsets a 32:9 view needs, and overriding the resulting RAM window expresses the
-intent exactly, in one place, for both the generated and interpreter paths.
+**One `[[imm_override]]` site, and only one.** For the actor windows none was
+needed: the constants are 8-bit immediates (`ld e,$60` / `$70` / `$A0`) that
+cannot express the >255 pixel offsets a 32:9 view needs anyway, and overriding
+the resulting RAM window expresses the intent exactly, in one place, for both
+the generated and interpreter paths. The fireball despawn at `00:327E` is the
+opposite case: there is no RAM window at all, every input is modulo 256, and
+the compared immediate is the only thing about the test that can be changed.
+Both `.toml`s declare it; the hook is installed whenever the widescreen mod is
+on and returns the ROM's own `$C0` unless Extended is selected, so a default
+Original build runs the same byte the literal would have been.
 
 ## Engine changes
 
@@ -348,6 +496,7 @@ python tools/probe_dx_widescreen.py   # both bodies at 32:9, colour gate + captu
 python tools/probe_dx_flicker.py      # attract demo + play, 16k frames, no flicker
 python tools/probe_spawns.py          # Original vs Extended vs mod off, incl. attract mode
 python tools/probe_pause_pipe.py      # pause + warp pipe hold the wide view
+python tools/probe_fireball.py        # fireball reach + drawn <-> alive, both bodies
 ```
 
 Each probe copies the executable into its own directory under `logs/` with its
@@ -386,6 +535,13 @@ Results from the current build:
 | Spawns during a debounce window | the window is genuinely entered — 25 debounced frames per 16 001-frame attract cycle on both bodies. `spawn_ungated` is 0 because none of those frames was also one the builder took a scan branch on, so the widened edge was never offered to an unproven frame in the first place; the decline path is there for the case that does coincide. `spawn_unpaired` 0, `pillarbox_model` 0 |
 | Entries the scan edge CROSSED, 16 001-frame attract cycle | 0 / 0 faithful, 0 / 0 DX (Original / Extended), of 99 / 140 and 99 / 140 consumed — the rest are cursor seeks at the demo's level loads, which vanilla does too |
 | Extended ramp over that cycle | reach 277 px right and 176 px left on the faithful body, 277 / 176 px on DX; edge high/low reads paired 5650/5650 right and 113/113 left |
+| Fireball, mod off vs Original | identical death world X **and** identical frames alive, both directions, both bodies — `(1368, 22)` / `(1254, 29)` on DX, `(192, 31)` / `(42, 29)` on the faithful body |
+| Fireball, vanilla despawn point | right camX + **112** (faithful) / + **116** (DX, the phase between its 3 px step and the camera's own), left camX − **134**; every one inside the ROM's `$C0..$CF` window |
+| Fireball, Extended at 512 px | dies 0–3 px past `view_left ± 32`: DX right x **1503**, left **1235**; faithful right **544**, left **107** — all `cause: "extended"` in the ring |
+| Fireball, Extended at 256 px | DX right **1404**, left **1225**; faithful right **288**, left **101** — every one different from the 512 px figure, so the boundary tracks the view and is not a wall |
+| Fireball, drawn ⇔ alive | 0 violations over all 16 tracked shots: while a slot is live its pieces are in the composed list at its own world position, never elsewhere; the frame it dies they are gone |
+| Fireball, aliased OAM suppressed | `fb_hidden` 123 (DX 512), 191 (faithful 512), 19 / 44 at 256 — and 0 in every Original run, which never gets far enough to alias |
+| Fireball, no unmatched compares | `fb_unmatched` 0 and `fb_failclosed` 0 in every run; the ring's own death record agreed with the independently derived one every time |
 
 Headless throughput on this machine (4500 frames, same route):
 
@@ -430,9 +586,13 @@ Headless throughput on this machine (4500 frames, same route):
   source) and by the per-frame gate, not by a play-test. Boss rooms, pipe sub-rooms and the vertical levels
   use the same block map, scroll box and actor machinery and are covered by the
   per-frame decode gate, but have not been play-tested wide.
-* Mario himself and the effects/particle table are drawn by emitters that never
-  clip, so they are always inside the native strip; only the `$AD00` actors are
-  composited into the margins.
+* **Enemy projectiles keep their vanilla range.** They are captured and drawn
+  correctly in the margins, but how far they fly is untouched — extending them
+  would be a difficulty change rather than a presentation fix. See
+  [Enemy projectiles are unchanged, deliberately](#enemy-projectiles-are-unchanged-deliberately).
+* **Mario's fireballs reach the view edge under Extended only.** Under Original
+  they die where the ROM kills them, which in a wide view is partway across the
+  picture — that is vanilla, and it is the price of vanilla gameplay decisions.
 * Audio, timing and save data are untouched.
 
 ## Reverse-engineering notes

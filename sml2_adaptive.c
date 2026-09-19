@@ -1922,6 +1922,12 @@ static void reset(GBContext *ctx) {
     s.cam_prev_ok = 0;
     s.spawn_cursor = -1;
     s.scan_seen_edge[0] = s.scan_seen_edge[1] = -1;
+    /* A state load rewinds $A880 too, so a slot that was live on the abandoned
+     * timeline must not be diffed against the restored one -- that would post a
+     * death to the ring that never happened. The ring's earlier entries stay:
+     * they record what did happen, on the timeline they happened on. */
+    memset(s.fb_prev_live, 0, sizeof s.fb_prev_live);
+    memset(s.fb_claimed, 0, sizeof s.fb_claimed);
     spawn_forget();
 }
 

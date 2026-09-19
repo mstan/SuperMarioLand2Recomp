@@ -257,13 +257,16 @@ screenX = (slotX_lo - camX_lo + 80) & $FF        ; 00:3271..00:327A
 and the identical test on screen Y at `00:328F`. Landing in `$C0..$CF` destroys
 the slot. Measured, at the fireball's 3 px per frame:
 
-| | vanilla death | |
-|---|---|---|
-| right | world X = camX + **112**..127 | 32 px past the native screen's right edge |
-| left | world X = camX − **129**..144 | 49 px past its left edge |
+| | vanilla death | measured | |
+|---|---|---|---|
+| right | world X = camX + **112**..127 | +112 faithful, +116 DX | 32 px past the native screen's right edge |
+| left | world X = camX − **129**..144 | −134 on both | 49 px past its left edge |
 
-The asymmetry is the 8-bit space's, not the game's: the kill window is a fixed
-16-wide band at `$C0` and the screen is 160 columns.
+The window is 16 wide and the shot steps 3 px, so which value inside it the
+slot lands on is the phase between its own step and the camera's -- the range
+is the binding, the measurement is one sample of it. The asymmetry between the
+two sides is the 8-bit space's, not the game's: the kill window is a fixed band
+at `$C0` and the screen is 160 columns.
 
 **Every input to that test is modulo 256** — the camera's low byte, the slot's
 low byte, `+80`, `and $F0` — so no lie about its inputs can express "512 pixels
@@ -483,6 +486,35 @@ Verified inert: with the mod off, frames 300, 900, 2500, 2700, 3000, 3400, 3800,
 4200 and 4600 of the same input route are **byte-identical** between a build with
 the change reverted and a build with it applied (9/9 PPM captures).
 
+## Debug-server commands this module adds
+
+`gb-recompiled/docs/DEBUG_SERVER.md` documents the engine's own commands and
+sends game-specific ones here. All of these are **queries against always-on
+state** — nothing has to be armed, and nothing is cleared by reading it.
+
+| Command | Args | Answers |
+|---|---|---|
+| `sml2_view` | — | one line of everything the compositor decided this frame: gate result and reason, view geometry, scores, hold/debounce counters, the live camera and scroll registers read fresh, the spawn ledger, and the fireball ledger (`fb_reach`, `fb_kept`, `fb_killed`, `fb_vanilla`, `fb_failclosed`, `fb_unmatched`, `fb_hidden`, `fb_deaths`) |
+| `sml2_sprites` | — | **streams** the composed sprite list for the frame on screen: every piece the two taps captured in WORLD coordinates (`src: "tap"`), then what the hardware left in OAM — `src: "oam"` for the entries the compositor places, `src: "oam_clipped"` for the ones it declines because the hardware shows no column of them. "The projectile is alive but not drawn" is only answerable by looking at this next to the tables |
+| `sml2_fireballs` | `since` (int, optional) | **streams** the two `$A880` slots as they are now, the world-X boundary the `00:327E` override is holding them to, the counters, and then the always-on death ring from `since` — `{frame, slot, x, y, rel, dir, cam_x, view_left, view_width, cause}` per death, `cause` one of `vanilla` / `extended` / `failclosed` / `other`. A fireball's whole life is under a second, so this ring is the only honest answer to "where did it die" |
+| `sml2_gate_log` | `since`, `limit` | the scene gate's rejection ring plus per-reason totals |
+| `sml2_flip_log` | — | every wide ↔ native transition, with the reason and the scores behind it |
+| `sml2_spawn_state` | — | the spawn ledger: the list, which records were spawned, jumped or stepped over, and the ring of edge crossings |
+| `sml2_score_map` | — | the per-cell tile/attribute outcome of the last scored frame |
+| `sml2_mod_state` | — | what the Mods page currently has selected |
+| `sml2_width` | `width` (int) | re-resolve the composed width at runtime, for the width sweep in `tools/probe_adaptive.py` |
+| `sml2_buttons` | `buttons` (mask) | installs a held input script; prefer the engine's own `set_input` in new code |
+| `sml2_save` / `sml2_load` / `sml2_capture` | — | deprecated aliases for the engine's `save_state` / `load_state` / `screenshot`, pinning their historic default paths |
+
+The `cause` field of a fireball death is worth spelling out, because three of
+the four are this module talking and one is not. `vanilla` is the ROM's own
+`$C0..$CF` window matching (Original always, Extended never). `extended` is the
+widened boundary firing. `failclosed` is a slot destroyed because the gate went
+off while it was already outside vanilla's reach. `other` is everything the
+horizontal compare is not — a block, an enemy, or the vertical window at
+`00:328F` — and it is seen by diffing the slots once a frame rather than by a
+hook, which is what keeps the ring complete.
+
 ## Validation
 
 Run from the game root with a **native Windows** Python 3 (the probes use
@@ -539,9 +571,11 @@ Results from the current build:
 | Fireball, vanilla despawn point | right camX + **112** (faithful) / + **116** (DX, the phase between its 3 px step and the camera's own), left camX − **134**; every one inside the ROM's `$C0..$CF` window |
 | Fireball, Extended at 512 px | dies 0–3 px past `view_left ± 32`: DX right x **1503**, left **1235**; faithful right **544**, left **107** — all `cause: "extended"` in the ring |
 | Fireball, Extended at 256 px | DX right **1404**, left **1225**; faithful right **288**, left **101** — every one different from the 512 px figure, so the boundary tracks the view and is not a wall |
-| Fireball, drawn ⇔ alive | 0 violations over all 16 tracked shots: while a slot is live its pieces are in the composed list at its own world position, never elsewhere; the frame it dies they are gone |
+| Fireball, drawn ⇔ alive | 0 violations over the 12 shots that have a composed list to check (the four mod-off shots have none): while a slot is live its two pieces are in the list at its own world position and nowhere else, and the frame it dies they are gone. The composed list lags the slot by one frame — it is copied at PPU line 0 from the previous frame's emitter pass — so the check steps one frame past the death before demanding an empty list |
 | Fireball, aliased OAM suppressed | `fb_hidden` 123 (DX 512), 191 (faithful 512), 19 / 44 at 256 — and 0 in every Original run, which never gets far enough to alias |
 | Fireball, no unmatched compares | `fb_unmatched` 0 and `fb_failclosed` 0 in every run; the ring's own death record agreed with the independently derived one every time |
+| Fireball vs an enemy past the vanilla death point | faithful body, Extended: a shot stayed alive to **camX + 294** and passed within **1 px** in X of a live actor standing 106 px beyond where vanilla destroys it. It did not kill it — the actor was on a platform 51 px up and the shot hugs the ground — so the kill itself is **reported, not asserted**. The Original control never found an actor out there to aim at in the same walk, so the negative half is **not exercised**; what is asserted for Original is the stronger and always-available fact that its shot never survives past camX + 127 |
+| Mod off is byte-identical | `tools/probe_byteident.py`: 7/7 PPM SHA-256 hashes (frames 2500, 2700, 3000, 3400, 3800, 4200, 4600 of the shared route, faithful body, `SML2_WIDESCREEN=off`) identical between a build with the whole branch checked out away and the branch tip — including the `[[imm_override]]` call now compiled into `00:327E` |
 
 Headless throughput on this machine (4500 frames, same route):
 

@@ -4,7 +4,7 @@
 	ignore = all
 [submodule "recomp-ui"]
 	path = recomp-ui
-	url = https://github.com/mstan/recomp-ui.git
+	url = https://github.com/RetroPortingToolKit/recomp-ui.git
 	ignore = all
 [submodule "disasm/marioland2"]
 	path = disasm/marioland2

@@ -23,8 +23,12 @@ What this asserts, per body and per direction:
   * Extended dies just past the view edge, on both sides, and the boundary
     MOVES when the view width does -- which is what separates "the override
     fired" from "it happened to hit a wall".
-  * an enemy beyond the vanilla death point is reached only if the fireball
-    gets that far.
+  * a shot can still be alive, and travelling, at a live enemy standing past
+    the vanilla death point. Whether it KILLS what it reaches is reported and
+    not asserted: the shot hugs the ground and bounces, so whether it meets a
+    particular enemy is the level's geometry talking. What is asserted is the
+    half that always holds -- Original never keeps a shot alive past
+    camX + 127, so it can never have been there at all.
 
 Method note: a fireball moves 3 px/frame and the view edge can be 256 px away,
 so a shot fired the way Mario is running meets terrain long before it meets the

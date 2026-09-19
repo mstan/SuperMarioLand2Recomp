@@ -188,12 +188,81 @@
  * of the screen": the despawn window sits at $C0..$CF, so nothing legitimately
  * lives between $C0 and here. */
 #define SML2_EMIT_X_NEGATIVE 0xD0
+/* Answering the emitter's screen-Y read with this puts every piece it writes
+ * at OAM Y $E0..$FF for any metasprite offset in [-16, +15]: below the visible
+ * 144 rows for the hardware, and above the `e[0] >= 160` cut in render()'s OAM
+ * pass for the host. Used to suppress the guest's copy of a piece the host is
+ * already drawing from a 16-bit world position (see fireball_aliased). */
+#define SML2_EMIT_Y_OFFSCREEN 0xF0
+/* An OAM entry the hardware can put at least one column of on screen: X 1..167
+ * (X 0 and X >= 168 are fully clipped). render()'s OAM pass exists to recover
+ * the parts of such a sprite the hardware clipped, so anything outside this is
+ * either invisible in vanilla -- and drawing it in a margin would be inventing
+ * content the taps already provide -- or an 8-bit alias of something far away.
+ */
+#define SML2_OAM_X_FIRST      1
+#define SML2_OAM_X_LAST       167
 
 #define SML2_FIREBALL       0xA880u
 #define SML2_FIREBALL_STRIDE 0x10u
 #define SML2_FIREBALL_SLOTS 2
 #define SML2_FIREBALL_DESPAWN 0xC0u  /* `and $F0 / cp $C0` at 00:3261        */
 #define SML2_FIREBALL_OVERSHOOT 32   /* how far past the edge vanilla lets it go */
+#define SML2_FIREBALL_END   (SML2_FIREBALL + SML2_FIREBALL_SLOTS * SML2_FIREBALL_STRIDE)
+
+/* ---- the horizontal despawn compare, 00:327E ----------------------------
+ *
+ * 00:3261, disassembled (V1.0; the DX image is byte-identical over the whole
+ * of 00:324F..00:32C0, so ONE binding serves both bodies):
+ *
+ *     3261  E5           push hl            ; hl = slot base, from 00:324F
+ *     3262  23 2A        inc hl / ld a,[hl+]
+ *     3264  EA 5D A2     ld [$A25D],a       ; the slot's world Y low byte
+ *     3267  23 2A        inc hl / ld a,[hl+]
+ *     3269  EA 5F A2     ld [$A25F],a       ; the slot's world X low byte
+ *     326C  23 7E        inc hl / ld a,[hl] ; hl is now base+5
+ *     326E  EA 12 A2     ld [$A212],a       ; direction, $FF = left
+ *     3271  F0 CA 47     ldh a,[$FFCA] / ld b,a          ; camera X LOW BYTE
+ *     3274  FA 5F A2 90  ld a,[$A25F] / sub b
+ *     3278  C6 50        add $50                          ; +80, screen centre
+ *     327A  E0 C5        ldh [$FFC5],a      ; screen X, EIGHT BIT
+ *     327C  E6 F0        and $F0
+ *     327E  FE C0        cp $C0             <-- the site this module overrides
+ *     3280  28 3B        jr z,$32BD         ; -> pop hl / xor a / ld [hl],a
+ *     3282..3291         the SAME test on screen Y ($FFC8 / $A25D / +70),
+ *                        `cp $C0` at 00:328F -- left VANILLA
+ *     3293..32AD         metasprite index $B0+ (right) or $B4+ (left) into
+ *                        $FFC6, then call $2CF4, the shared emitter
+ *     32B2  CD ED 2F     call $2FED         ; world-space actor collision
+ *
+ * Everything the compare sees is 8-bit and modulo 256, so the ROM cannot be
+ * told "further" by moving the camera: the only expressible change is the
+ * compared immediate itself. A [[imm_override]] at 00:327E hands the ROM
+ * either A (Z set -> the ROM runs its OWN destroy path at $32BD) or A^$10
+ * (Z clear -> the ROM keeps the slot), and nothing else about the routine
+ * changes -- control flow, cycle counts and the destroy sequence stay the
+ * ROM's. Only Z is consumed (00:3280 `jr z`); 00:3282 reloads A immediately,
+ * so the carry the compare also sets is dead.
+ *
+ * MEASURED vanilla despawn points (3 px/frame, so the 16-wide $C0..$CF window
+ * cannot be stepped over):
+ *   right  screen X $C0  -> worldX = camX + 112, 32 px past the native edge
+ *   left   screen X $CF..$C0 -> worldX = camX - 129 .. camX - 144, i.e. 49 px
+ *          past the left native edge on the first step that lands in the
+ *          window. The asymmetry is the 8-bit space's, not the game's: the
+ *          window is a fixed band at $C0 and the screen is 160 wide. */
+#define SML2_FB_CP_X_BANK   0
+#define SML2_FB_CP_X_PC     0x327Eu
+#define SML2_FB_CP_Y_PC     0x328Fu  /* the Y twin -- never overridden        */
+#define SML2_FB_SCRATCH_Y   0xA25Du  /* slot Y low byte, copied by 00:3263    */
+#define SML2_FB_SCRATCH_X   0xA25Fu  /* slot X low byte, copied by 00:3268    */
+#define SML2_FB_DIR         0xA212u  /* slot direction, copied by 00:326D     */
+#define SML2_FB_HL_BIAS     5        /* HL at 00:327E is the slot base plus 5 */
+/* 00:3293..00:32A5: index = ($B0 right / $B4 left) + (($FF97 & 6) >> 1). No
+ * other emitter client uses this range, which is what lets the emitter tap
+ * tell a fireball apart from Mario when their coordinates alias mod 256. */
+#define SML2_FB_INDEX_LO    0xB0u
+#define SML2_FB_INDEX_HI    0xB7u
 
 /* Status bar: one 8px window row at the bottom, window map $9C00, WX = 7. */
 #define SML2_HUD_WY        136

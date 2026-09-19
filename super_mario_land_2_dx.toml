@@ -30,3 +30,11 @@ emit_comments = true
 # "Super_Mario_Land_2_DX__" so it links beside the faithful body. The emitted
 # Super_Mario_Land_2_DX_body.cmake lists its sources for game_build.cmake.
 body_only = true
+
+# Same site as the faithful body: 00:324F..00:32C0 is byte-identical in the DX
+# image, so the fireball update was not relocated and one address serves both.
+# See super_mario_land_2.toml and sml2_map.h (SML2_FB_CP_X_PC).
+[[imm_override]]
+bank = 0
+addr = 0x327E
+note = "fireball horizontal despawn window (Extended reach)"

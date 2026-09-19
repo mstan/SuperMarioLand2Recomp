@@ -64,10 +64,13 @@ the window is resized or made fullscreen. A window taller than 10:9 stays at
 native width and letterboxes.
 
 The **Enemy spawns** option offers **Extended** (default) and **Original**, and
-is saved as `Spawns=` in the same file. See [Enemy spawns](#enemy-spawns): the
-default moves the spawn point out to the edge of what the player can actually
-see, so enemies walk in rather than pop in; Original keeps the game's own spawn
-timing untouched for anyone who wants vanilla gameplay decisions.
+is saved as `Spawns=` in the same file. See [Enemy spawns](#enemy-spawns). It
+covers both of the things the game measures against the ORIGINAL screen edge
+rather than the visible one: Extended moves the spawn point out to the edge of
+what the player can actually see, so enemies walk in rather than pop in, and it
+lets Fire Mario's fireballs cross the whole composed view instead of winking
+out partway across it. Original keeps both untouched for anyone who wants
+vanilla gameplay decisions.
 
 Environment overrides (seed the launcher controls, lose to the checkbox):
 `SML2_WIDESCREEN=fit | 16:9 | 21:9 | 32:9 | off | <integer width>` and

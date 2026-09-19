@@ -25,9 +25,15 @@
 # (ssh-key: on actions/checkout) instead.
 name: release
 
+# Manual until the SML2_ROM_B64 secret is provisioned; releases are cut from a
+# developer machine (RELEASE.md) and uploaded with `gh release create`. Switch
+# back to `push: tags: ['v*']` once the secret exists.
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.1.0)'
+        required: true
   workflow_dispatch:
     inputs:
       version:

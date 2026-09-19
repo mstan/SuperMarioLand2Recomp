@@ -355,6 +355,12 @@ class LauncherProbe(Probe):
             try:
                 self.command("sml2_mod_state")
                 break
+            except OSError:
+                # The launcher quit without ever booting the game: commit()
+                # vetoed Play, the script ran out, the process exited and the
+                # pre-boot listener went with it. That IS the refusal.
+                self.close()
+                raise PlayRefused("Mods script never reached Play; inspect " + str(FOLDER))
             except RuntimeError as exc:
                 if "pre-boot launcher" not in str(exc):
                     raise

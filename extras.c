@@ -109,5 +109,8 @@ const struct RecompLauncherCModProvider *game_get_mods(const char *exe_dir) {
 }
 
 int game_handle_debug_cmd(const char *cmd, int id, const char *json) {
+    /* The Mods provider seam first: it answers the sml2_mod_* commands the
+     * headless probe drives, and falls through for everything else. */
+    if (sml2_mods_debug(cmd, id, json)) return 1;
     return sml2_adaptive_debug(cmd, id, json);
 }

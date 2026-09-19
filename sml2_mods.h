@@ -37,3 +37,9 @@ const struct RecompLauncherCModProvider *sml2_mod_provider(const char *exe_dir);
 /* 1 when the DX patch is present next to the executable, so the DX body can
  * actually derive its image at boot. 0 means the toggle must not be honoured. */
 int sml2_dx_patch_available(void);
+
+/* Headless probe seam: drive the launcher Mods provider over the debug server
+ * (sml2_mod_features / sml2_mod_enable / sml2_mod_option / sml2_mod_commit).
+ * Returns 1 when `cmd` was one of them. The real ImGui page cannot be driven
+ * without a window -- see the note at the definition in sml2_mods.c. */
+int sml2_mods_debug(const char *cmd, int id, const char *json);

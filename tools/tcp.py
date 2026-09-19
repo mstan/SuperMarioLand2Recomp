@@ -207,6 +207,69 @@ class Debug:
         return self.cmd("set_input", buttons=buttons if isinstance(buttons, str)
                         else f"0x{buttons:02x}")
 
+    # ---- synthetic SDL events -------------------------------------------
+    #
+    # `press`/`hold`/`set_input` above override the RESOLVED joypad mask, so a
+    # test built on them passes even when the binding layer is broken. These
+    # push real SDL events into the queue the runtime drains, which is the only
+    # way to exercise binding capture, the two slots per action and the
+    # conflict rule. No window focus is needed or taken -- they work headless
+    # (GBRECOMP_HEADLESS=1) and behind other windows alike.
+
+    def sdl_event(self, **args):
+        """Raw form: pass `type` plus that type's arguments."""
+        return self.cmd("sdl_event", **args)
+
+    def key(self, scancode=None, name: str | None = None, down: bool = True,
+            repeat: bool = False):
+        """One SDL_KEYDOWN / SDL_KEYUP.
+
+        `scancode` is an SDL scancode int (SDL_SCANCODE_A == 4); `name` is the
+        scancode name instead ("A", "Right", "F5"). Exactly one is needed.
+        """
+        args = {"type": "key", "down": 1 if down else 0,
+                "repeat": 1 if repeat else 0}
+        if scancode is not None:
+            args["scancode"] = int(scancode)
+        elif name:
+            args["key"] = name
+        else:
+            raise ValueError("key() needs a scancode or a name")
+        return self.cmd("sdl_event", **args)
+
+    def key_tap(self, scancode=None, name: str | None = None, frames: int = 2):
+        """Press, let `frames` guest frames pass, release.
+
+        Only meaningful while the game is running or being stepped; with the
+        server paused, `frames` steps it.
+        """
+        self.key(scancode, name, down=True)
+        if frames:
+            self.step(frames)
+        return self.key(scancode, name, down=False)
+
+    def mouse_move(self, x: int, y: int, warp: bool = False):
+        """Pointer motion at window-logical (x, y).
+
+        `warp=False` (the default) leaves the HOST cursor where the user left
+        it; the UI still sees the motion. Pass warp=True only for a UI that
+        polls SDL_GetMouseState() rather than reading the event.
+        """
+        return self.cmd("sdl_event", type="mouse_move", x=int(x), y=int(y),
+                        warp=1 if warp else 0)
+
+    def mouse_click(self, x: int, y: int, button: str = "left",
+                    warp: bool = False):
+        """A full click at (x, y): move, button down, button up."""
+        common = {"type": "mouse_button", "button": button, "x": int(x),
+                  "y": int(y), "warp": 1 if warp else 0}
+        self.cmd("sdl_event", down=1, **common)
+        return self.cmd("sdl_event", down=0, **common)
+
+    def text(self, value: str):
+        """An SDL_TEXTINPUT event (the request parser handles no escapes)."""
+        return self.cmd("sdl_event", type="text", text=value)
+
     # ---- state ----------------------------------------------------------
 
     @staticmethod

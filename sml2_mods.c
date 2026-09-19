@@ -12,6 +12,7 @@
 #include "sml2_mods.h"
 #include "sml2_adaptive.h"
 #include "recomp_launcher.h"
+#include "debug_server.h"
 #include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -433,4 +434,171 @@ const RecompLauncherCModProvider *sml2_mod_provider(const char *exe_dir) {
     provider.archive_extension = ".gbmod";
     provider.archive_description = "Game Boy mod package (.gbmod)";
     return &provider;
+}
+
+/* ---- headless probe seam --------------------------------------------------
+ *
+ * The recomp-ui Mods page is only reachable through the pre-boot launcher, and
+ * that launcher cannot run headlessly: it needs a GL context (so no
+ * SDL_VIDEODRIVER=dummy) and recomp-ui raises its window unconditionally
+ * (launcher_platform_sdl2.c, SDL_RaiseWindow), so any run of it takes the
+ * user's foreground away. See gb-recompiled/docs/DEBUG_SERVER.md.
+ *
+ * These commands drive the SAME provider vtable the Mods page drives --
+ * set_enabled / set_option / commit / last_error, resolved through
+ * sml2_mod_provider() -- so a headless probe covers the provider surface and
+ * the sml2-mods.ini round-trip without a window. What it does NOT cover is the
+ * ImGui page itself (row layout, which control writes which option); that stays
+ * the job of `probe_mods.py --headed`.
+ */
+
+/* Quote-safe copy for a JSON reply: the provider's own strings (status lines,
+ * option labels) are free text and one stray quote would invalidate the line. */
+static void mods_json_quote(const char *in, char *out, int cap) {
+    int i = 0;
+    for (const char *p = in ? in : ""; *p && i < cap - 2; ++p) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '"' || c == '\\') {
+            if (i >= cap - 3) break;
+            out[i++] = '\\';
+            out[i++] = (char)c;
+        } else if (c < 0x20) {
+            out[i++] = ' ';
+        } else {
+            out[i++] = (char)c;
+        }
+    }
+    out[i] = '\0';
+}
+
+/* One line describing every feature the Mods page would draw, with each
+ * feature's live option values. This is the read side of the same vtable the
+ * page reads. */
+static void mods_reply_features(int id) {
+    const RecompLauncherCModProvider *p = sml2_mod_provider(NULL);
+    const int total = p->feature_count ? p->feature_count(p->ctx) : 0;
+    char buf[8192];
+    int n = snprintf(buf, sizeof(buf),
+                     "{\"id\":%d,\"ok\":true,\"count\":%d,\"features\":[",
+                     id, total);
+    for (int i = 0; i < total; i++) {
+        RecompLauncherCModFeature f;
+        memset(&f, 0, sizeof(f));
+        if (!p->feature_get || !p->feature_get(p->ctx, i, &f)) break;
+        char name[256], group[192], status[512];
+        mods_json_quote(f.name, name, sizeof(name));
+        mods_json_quote(f.group, group, sizeof(group));
+        mods_json_quote(f.status, status, sizeof(status));
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+                      "%s{\"package\":\"%s\",\"feature\":\"%s\",\"name\":\"%s\","
+                      "\"group\":\"%s\",\"enabled\":%d,\"has_error\":%d,"
+                      "\"status\":\"%s\",\"options\":[",
+                      i ? "," : "", f.package_id, f.id, name, group,
+                      f.enabled, f.has_error, status);
+        for (int o = 0; o < f.option_count; o++) {
+            RecompLauncherCModOption opt;
+            memset(&opt, 0, sizeof(opt));
+            if (!p->feature_option_get ||
+                !p->feature_option_get(p->ctx, f.package_id, f.id, o, &opt)) break;
+            char label[256], value[256];
+            mods_json_quote(opt.label, label, sizeof(label));
+            mods_json_quote(opt.value, value, sizeof(value));
+            n += snprintf(buf + n, sizeof(buf) - (size_t)n,
+                          "%s{\"id\":\"%s\",\"label\":\"%s\",\"value\":\"%s\"}",
+                          o ? "," : "", opt.id, label, value);
+        }
+        n += snprintf(buf + n, sizeof(buf) - (size_t)n, "]}");
+    }
+    snprintf(buf + n, sizeof(buf) - (size_t)n, "]}");
+    gb_debug_server_send_line(buf);
+}
+
+/* Copy a JSON string argument. The engine's parser is not reachable from here,
+ * and the values involved are ids and short labels ("32:9"), never paths. */
+static int mods_json_str(const char *json, const char *key, char *out, int cap) {
+    char pattern[64];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char *p = json ? strstr(json, pattern) : NULL;
+    if (!p) return 0;
+    p = strchr(p + strlen(pattern), ':');
+    if (!p) return 0;
+    ++p;
+    while (*p == ' ') ++p;
+    if (*p != '"') return 0;
+    ++p;
+    int i = 0;
+    while (*p && *p != '"' && i < cap - 1) out[i++] = *p++;
+    out[i] = '\0';
+    return 1;
+}
+
+static int mods_json_int(const char *json, const char *key, int fallback) {
+    char pattern[64];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char *p = json ? strstr(json, pattern) : NULL;
+    if (!p) return fallback;
+    p = strchr(p + strlen(pattern), ':');
+    return p ? atoi(p + 1) : fallback;
+}
+
+int sml2_mods_debug(const char *cmd, int id, const char *json) {
+    (void)sml2_mod_settings();          /* resolve base_dir / config_path once */
+    const RecompLauncherCModProvider *p = sml2_mod_provider(NULL);
+
+    if (!strcmp(cmd, "sml2_mod_features")) {
+        mods_reply_features(id);
+        return 1;
+    }
+
+    if (!strcmp(cmd, "sml2_mod_enable")) {
+        char pkg[96], feat[96];
+        if (!mods_json_str(json, "package", pkg, sizeof(pkg)) ||
+            !mods_json_str(json, "feature", feat, sizeof(feat))) {
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":false,\"error\":\"need package and feature\"}", id);
+            return 1;
+        }
+        const int enabled = mods_json_int(json, "enabled", 1);
+        const int ok = p->feature_enable &&
+                       p->feature_enable(p->ctx, pkg, feat, enabled);
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":%s,\"package\":\"%s\",\"feature\":\"%s\","
+            "\"enabled\":%d,\"error\":\"%s\"}",
+            id, ok ? "true" : "false", pkg, feat, enabled,
+            ok ? "" : (p->last_error ? p->last_error(p->ctx) : "rejected"));
+        return 1;
+    }
+
+    if (!strcmp(cmd, "sml2_mod_option")) {
+        char pkg[96], feat[96], opt[96], val[128];
+        if (!mods_json_str(json, "package", pkg, sizeof(pkg)) ||
+            !mods_json_str(json, "feature", feat, sizeof(feat)) ||
+            !mods_json_str(json, "option", opt, sizeof(opt)) ||
+            !mods_json_str(json, "value", val, sizeof(val))) {
+            gb_debug_server_send_fmt(
+                "{\"id\":%d,\"ok\":false,\"error\":"
+                "\"need package, feature, option and value\"}", id);
+            return 1;
+        }
+        const int ok = p->feature_set_option &&
+                       p->feature_set_option(p->ctx, pkg, feat, opt, val);
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":%s,\"option\":\"%s\",\"value\":\"%s\","
+            "\"error\":\"%s\"}",
+            id, ok ? "true" : "false", opt, val,
+            ok ? "" : (p->last_error ? p->last_error(p->ctx) : "rejected"));
+        return 1;
+    }
+
+    if (!strcmp(cmd, "sml2_mod_commit")) {
+        /* Exactly what PLAY does: resolve the staged selection, veto an
+         * impossible one, and persist sml2-mods.ini. */
+        const int ok = p->commit && p->commit(p->ctx, NULL);
+        gb_debug_server_send_fmt(
+            "{\"id\":%d,\"ok\":true,\"committed\":%d,\"error\":\"%s\"}",
+            id, ok, ok ? "" : (p->last_error ? p->last_error(p->ctx) : "rejected"));
+        return 1;
+    }
+
+    return 0;
 }

@@ -48,6 +48,15 @@ class Probe:
             if key.startswith("SML2_"):
                 environ.pop(key)
         environ.update(GBRECOMP_DEBUG_PORT=str(port), GBRECOMP_NO_LAUNCHER="1")
+        if window:
+            # A probe that needs a REAL window (probe_fit resizes one and reads
+            # the fit width back) must still not take the user's foreground.
+            # SDL creates the window with SW_SHOWNOACTIVATE under this hint, and
+            # the runtime never calls SDL_RaiseWindow, so nothing raises it
+            # afterwards -- unlike the recomp-ui launcher, which does.
+            # Verified with tools/focus_guard.py: GetForegroundWindow never
+            # moves across a full probe_fit run.
+            environ.setdefault("SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN", "1")
         if aspect:
             environ["SML2_WIDESCREEN"] = aspect
         if env:

@@ -30,10 +30,11 @@ from probe_adaptive import ROUTE  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "generated/build/Super_Mario_Land_2.exe"
-# Boot, title, file select, level entry, then scrolling gameplay with the
-# route's jump cadence -- the same frames the engine read-override change was
-# signed off against.
-FRAMES = (300, 900, 2500, 2700, 3000, 3400, 3800, 4200, 4600)
+# Level entry, then scrolling gameplay with the route's jump cadence. The route
+# enters the level at frame 2400 on purpose: --benchmark reaches it in over a
+# second, which is ample time to connect and pause first. Frames before the
+# attach are not capturable at all, which is why none is asked for.
+FRAMES = (2500, 2700, 3000, 3400, 3800, 4200, 4600)
 
 
 def capture(tag):
@@ -91,7 +92,10 @@ def capture(tag):
             if obj.get("event") == name:
                 return obj
 
-    cmd("pause")
+    start = cmd("pause")["frame"]
+    if start >= FRAMES[0]:
+        raise RuntimeError("attached at frame %d, after the first capture point"
+                           % start)
     hashes = {}
     try:
         for frame in FRAMES:

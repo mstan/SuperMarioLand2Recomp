@@ -327,10 +327,18 @@ despawn test — a different instruction — never sees it.
 Independently, the compositor's OAM pass now ignores entries outside OAM X
 `1..167`. An entry the hardware clips away entirely contributes nothing to the
 native strip, so placing it at `s.left + X - 8` in a margin asserts a world
-position the 8-bit OAM X never carried. This is what stops a fireball leaving
-to the LEFT — written at OAM X `$CC..$FB` by vanilla itself — being redrawn as
-a ghost in the RIGHT margin, and it applies in both spawn policies because it
-is a compositor bug, not a policy.
+position the 8-bit OAM X never carried.
+
+That one is not a hypothetical and it is not Extended's fault. **Measured on
+the DX body with `Enemy spawns = Original`** — the policy that changes nothing
+about the guest — a single left-travelling fireball produced **20** OAM entries
+carrying its own tiles at OAM X `$D0..$FD`, every one of which the old pass
+would have drawn **244 to 253 pixels to the RIGHT** of where the fireball
+actually was, and **all 20 inside the 512-pixel view**. Vanilla writes those
+itself: a fireball at screen X −20 is OAM X `$E8`, invisible to the hardware
+and meaningless as a world position. The bound is therefore a compositor fix
+that applies in both policies, and `sml2_sprites` reports what it refused as
+`src: "oam_clipped"` rather than dropping it silently.
 
 ### Enemy projectiles are unchanged, deliberately
 
@@ -578,6 +586,7 @@ Results from the current build:
 | Fireball, aliased OAM suppressed | `fb_hidden` 123 (DX 512), 191 (faithful 512), 19 / 44 at 256 — and 0 in every Original run, which never gets far enough to alias |
 | Fireball, no unmatched compares | `fb_unmatched` 0 and `fb_failclosed` 0 in every run; the ring's own death record agreed with the independently derived one every time |
 | Fireball vs an enemy past the vanilla death point | faithful body, Extended: a shot stayed alive to **camX + 294** and passed within **1 px** in X of a live actor standing 106 px beyond where vanilla destroys it. It did not kill it — the actor was on a platform 51 px up and the shot hugs the ground — so the kill itself is **reported, not asserted**. The Original control never found an actor out there to aim at in the same walk, so the negative half is **not exercised**; what is asserted for Original is the stronger and always-available fact that its shot never survives past camX + 127 |
+| Margin ghost from an aliased OAM X | 20 fireball OAM entries in one Original left-hand shot, every one 244–253 px right of the slot and every one inside the 512 px view; all 20 now reported as `oam_clipped` and drawn by nobody |
 | Mod off is byte-identical | `tools/probe_byteident.py`: 7/7 PPM SHA-256 hashes (frames 2500, 2700, 3000, 3400, 3800, 4200, 4600 of the shared route, faithful body, `SML2_WIDESCREEN=off`) identical between a build with the whole branch checked out away and the branch tip — including the `[[imm_override]]` call now compiled into `00:327E` |
 
 Headless throughput on this machine (4500 frames, same route):

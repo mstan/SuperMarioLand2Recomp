@@ -1,6 +1,8 @@
-# Super Mario Land 2: 6 Golden Coins — Recompiled v0.1.0
+# Super Mario Land 2: 6 Golden Coins — Recompiled v0.1.1
 
-First release. A native static recompilation of *Super Mario Land 2 - 6 Golden Coins (UE) (V1.0)*
+v0.1.1 fixes the Linux ROM picker: the launcher now uses its built-in file browser on Linux (no zenity/kdialog needed), starts beside the AppImage, and a ROM dropped next to the program or in `roms/` is picked up automatically on every platform.
+
+First release notes follow. A native static recompilation of *Super Mario Land 2 - 6 Golden Coins (UE) (V1.0)*
 for Windows and Linux, with the shared Retro Launcher and two opt-in mods.
 
 ## What you need

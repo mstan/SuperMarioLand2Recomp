@@ -7,7 +7,7 @@ the launcher or the in-game menu, both of which only ever wrote slot 0) ended up
 with A driving BOTH the A button and LEFT: pressing A to jump also walked Mario
 left. `$FF80` read 0x21 (A | Left) instead of 0x01.
 
-What is verified, through the real window and the real Windows keyboard stack:
+What is verified:
 
   * the playtester's prefs (a.0 = A key, b.0 = Z) produce 0x01 for the A key --
     never 0x21 -- because the conflicting `left.1` is dropped when the file is
@@ -19,29 +19,55 @@ What is verified, through the real window and the real Windows keyboard stack:
     one that created the bad file -- now draws BOTH slots and takes a key away
     from whatever else held it when a binding is committed.
 
-Keys are injected with user32 keybd_event using hardware scancodes against the
-focused game window -- not through the debug server's `press` command, which
-bypasses the whole binding layer and would pass even with the bug present. The
-debug server is used only to READ $FF80 (A=01 B=02 Select=04 Start=08 Right=10
-Left=20 Up=40 Down=80), which the game writes every frame from its own joypad
-poll. Requires a native Windows Python.
+HOW THE KEYS GET IN
+-------------------
+By default this probe is HEADLESS and never touches the desktop. The game runs
+with GBRECOMP_HEADLESS=1 (no window, no GL, SDL_VIDEODRIVER=dummy) and keys
+arrive over the debug server's `sdl_event` command, which pushes a real
+SDL_KEYDOWN into the same queue `gb_platform_poll_events()` drains. The binding
+capture, the two-slot tables, the conflict rule and the joypad mapping under
+test are therefore byte-for-byte the code a physical keystroke runs -- unlike
+the server's `press` command, which overrides the RESOLVED joypad mask and would
+pass even with the bug present. The debug server is still used only to READ
+$FF80 (A=01 B=02 Select=04 Start=08 Right=10 Left=20 Up=40 Down=80).
 
-    python tools/probe_keybinds.py
+Because there is no wall clock in the loop, each sample is `pause` + `step`:
+inject, step the guest, read $FF80, release.
+
+`--headed` restores the original behaviour: a real window, brought to the
+foreground with SetForegroundWindow, and keys pushed through the Windows
+keyboard stack with user32 keybd_event. That path needs an interactive desktop
+and TAKES FOCUS; it exists so the OS keyboard stack itself stays covered.
+
+CASE 3 (the launcher keybinds page) IS HEADED-ONLY
+--------------------------------------------------
+The recomp-ui pre-boot launcher cannot run without a window: it needs a GL
+context (`SDL_CreateWindow failed: OpenGL support is ... not available in
+current SDL video driver (dummy)`) and it raises its own window unconditionally
+(`SDL_RaiseWindow` in recomp-ui src/common/launcher_platform_sdl2.c), so any run
+of it takes the foreground. Under `--headed` the case still runs, but it is
+driven entirely over TCP through the engine's pre-boot debug listener -- a
+synthetic click and a synthetic key, no user32 and no SetForegroundWindow from
+this probe.
+
+    python tools/probe_keybinds.py            # headless, cases 1-2
+    python tools/probe_keybinds.py --headed   # adds case 3, takes focus
+
+Requires a native Windows Python for --headed (ctypes.WinDLL).
 """
 from __future__ import annotations
 
-import ctypes
+import argparse
 import os
 import shutil
 import socket
 import subprocess
 import sys
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from tcp import Debug  # noqa: E402
+from tcp import Debug, DebugError  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "generated/build/Super_Mario_Land_2.exe"
@@ -55,9 +81,9 @@ BIT = {"A": 0x01, "B": 0x02, "SELECT": 0x04, "START": 0x08,
 # SDL scancodes (what runtime_prefs.ini stores) for the keys this probe uses.
 SDL_A, SDL_D, SDL_Z, SDL_RIGHT = 4, 7, 29, 79
 
-# ...and the PS/2 set-1 hardware scancodes keybd_event wants for them.
-# `extended` is the 0xE0 prefix the arrow cluster needs (the numeric keypad
-# carries the same base codes without it).
+# ...and the PS/2 set-1 hardware scancodes keybd_event wants for them, used only
+# by --headed. `extended` is the 0xE0 prefix the arrow cluster needs (the
+# numeric keypad carries the same base codes without it).
 HW = {
     SDL_A:     (0x1E, False),
     SDL_D:     (0x20, False),
@@ -69,26 +95,37 @@ KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_SCANCODE = 0x0008
 
-user32 = ctypes.WinDLL("user32", use_last_error=True)
+_user32 = None
 
 
-# ── window focus ────────────────────────────────────────────────────────────
+def user32():
+    """Loaded lazily: only --headed needs it, and only Windows has it."""
+    global _user32
+    if _user32 is None:
+        import ctypes
+        _user32 = ctypes.WinDLL("user32", use_last_error=True)
+    return _user32
+
+
+# ── window focus (--headed only) ─────────────────────────────────────────────
 def _find_window(pid: int, deadline: float):
     """The first visible top-level window owned by `pid`."""
+    import ctypes
+    from ctypes import wintypes
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def visit(hwnd, _):
         owner = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value == pid and user32.IsWindowVisible(hwnd):
+        user32().GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32().IsWindowVisible(hwnd):
             found.append(hwnd)
             return False
         return True
 
     while time.monotonic() < deadline:
         found.clear()
-        user32.EnumWindows(visit, 0)
+        user32().EnumWindows(visit, 0)
         if found:
             return found[0]
         time.sleep(0.05)
@@ -102,100 +139,163 @@ def _focus(hwnd, deadline: float):
     foreground, so the caller's input queue is attached to the foreground
     thread's first -- the documented way to get the grant.
     """
-    user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+    u = user32()
+    u.ShowWindow(hwnd, 9)          # SW_RESTORE
     while time.monotonic() < deadline:
-        fg = user32.GetForegroundWindow()
+        fg = u.GetForegroundWindow()
         if fg == hwnd:
             return
-        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
-        fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+        target_thread = u.GetWindowThreadProcessId(hwnd, None)
+        fg_thread = u.GetWindowThreadProcessId(fg, None) if fg else 0
         attached = bool(fg_thread and fg_thread != target_thread and
-                        user32.AttachThreadInput(fg_thread, target_thread, True))
-        user32.BringWindowToTop(hwnd)
-        user32.SetForegroundWindow(hwnd)
-        user32.SetActiveWindow(hwnd)
+                        u.AttachThreadInput(fg_thread, target_thread, True))
+        u.BringWindowToTop(hwnd)
+        u.SetForegroundWindow(hwnd)
+        u.SetActiveWindow(hwnd)
         if attached:
-            user32.AttachThreadInput(fg_thread, target_thread, False)
+            u.AttachThreadInput(fg_thread, target_thread, False)
         time.sleep(0.1)
     raise RuntimeError("could not bring the game window to the foreground; "
                        "a real interactive desktop session is required")
 
 
-# ── key injection ───────────────────────────────────────────────────────────
 def _key(sdl_scancode: int, down: bool):
+    """--headed only: a key through the real Windows keyboard stack."""
     scan, extended = HW[sdl_scancode]
     flags = KEYEVENTF_SCANCODE
     if extended:
         flags |= KEYEVENTF_EXTENDEDKEY
     if not down:
         flags |= KEYEVENTF_KEYUP
-    user32.keybd_event(0, scan, flags, 0)
+    user32().keybd_event(0, scan, flags, 0)
+
+
+def free_port() -> int:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def clean_env(**extra) -> dict:
+    env = os.environ.copy()
+    env["PATH"] = "C:/msys64/mingw64/bin;" + env["PATH"]
+    for key in list(env):
+        if key.startswith(("SML2_", "LNG_")):
+            env.pop(key)
+    env.update(extra)
+    return env
+
+
+def stage(folder: Path, *, assets: bool = False, patch: bool = False) -> Path:
+    """Copy the executable (and what it loads) into its own sandbox folder."""
+    if folder.exists():
+        shutil.rmtree(folder, ignore_errors=True)
+    (folder / "logs").mkdir(parents=True, exist_ok=True)
+    exe = folder / EXE.name
+    shutil.copy2(EXE, exe)
+    # SDL2/ANGLE/libstdc++ live beside the build output; a sandbox that lacks
+    # them silently fails to start.
+    for dll in EXE.parent.glob("*.dll"):
+        shutil.copy2(dll, folder / dll.name)
+    if assets and (EXE.parent / "assets").exists():
+        shutil.copytree(EXE.parent / "assets", folder / "assets", dirs_exist_ok=True)
+    if patch and (EXE.parent / "sml2dx_v181.bps").exists():
+        shutil.copy2(EXE.parent / "sml2dx_v181.bps", folder / "sml2dx_v181.bps")
+    # rom.cfg is read from the exe's directory, so it belongs in the sandbox.
+    rom = next((ROOT / "roms").glob("*V1.0*.gb"))
+    (folder / "rom.cfg").write_text(str(rom))
+    return exe
 
 
 class Game:
     """One sandboxed run of the game: own folder, own prefs, own debug port."""
 
-    def __init__(self, name: str, prefs: str):
+    def __init__(self, name: str, prefs: str, headed: bool = False):
+        self.headed = headed
         self.folder = SANDBOX / name
-        if self.folder.exists():
-            shutil.rmtree(self.folder, ignore_errors=True)
-        (self.folder / "logs").mkdir(parents=True, exist_ok=True)
-        self.exe = self.folder / EXE.name
-        shutil.copy2(EXE, self.exe)
-        assets = EXE.parent / "assets"
-        if assets.exists():
-            shutil.copytree(assets, self.folder / "assets", dirs_exist_ok=True)
-        patch = EXE.parent / "sml2dx_v181.bps"
-        if patch.exists():
-            shutil.copy2(patch, self.folder / patch.name)
-        # rom.cfg is read from the exe's directory, so it belongs in the sandbox.
-        rom = next((ROOT / "roms").glob("*.gb"))
-        (self.folder / "rom.cfg").write_text(str(rom))
+        self.exe = stage(self.folder)
         self.prefs_path = self.folder / "runtime_prefs.ini"
         self.prefs_path.write_text(prefs)
+        self.port = free_port()
 
-        sock = socket.socket()
-        sock.bind(("127.0.0.1", 0))
-        self.port = sock.getsockname()[1]
-        sock.close()
-
-        env = os.environ.copy()
-        env["PATH"] = "C:/msys64/mingw64/bin;" + env["PATH"]
-        for key in list(env):
-            if key.startswith(("SML2_", "LNG_")):
-                env.pop(key)
-        env.update(GBRECOMP_DEBUG_PORT=str(self.port), GBRECOMP_NO_LAUNCHER="1")
+        env = clean_env(GBRECOMP_DEBUG_PORT=str(self.port),
+                        GBRECOMP_NO_LAUNCHER="1")
+        if not headed:
+            # No window, no GL, no audio device -- but the SDL event queue is
+            # live and drained through the ordinary handler, which is what makes
+            # an injected key indistinguishable from a real one.
+            env["GBRECOMP_HEADLESS"] = "1"
         self.log = open(self.folder / "process.log", "wb")
-        # A REAL window: --benchmark forces the dummy video driver, and a
-        # dummy window never receives a keystroke.
         self.process = subprocess.Popen(
             [str(self.exe), "--log-file", "logs/run.log"],
             cwd=self.folder, env=env, stdout=self.log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 60
         self.debug = Debug(port=self.port, timeout=60)
-        self.hwnd = _find_window(self.process.pid, deadline)
-        _focus(self.hwnd, deadline)
+        if headed:
+            # A REAL window: keybd_event reaches the focused window only.
+            self.hwnd = _find_window(self.process.pid, deadline)
+            _focus(self.hwnd, deadline)
+        else:
+            # Deterministic from here: the guest only advances when we step it.
+            self.debug.pause()
+            self.debug.step(8)
+            # Every tap restarts from this exact guest state. SML2's title
+            # screen runs an attract DEMO that writes $FF80 itself (measured:
+            # it starts around frame 1100 and holds Right), so a probe that
+            # just kept stepping would read the demo's input as if it were the
+            # key under test. Reloading one snapshot per tap removes the
+            # question entirely -- and removes wall-clock timing with it.
+            self.base_state = self.folder / "probe_base.state"
+            self.debug.save_state(path=str(self.base_state))
+            if self.held():
+                raise RuntimeError(
+                    "$FF80 is already 0x%02x at the snapshot frame; the attract "
+                    "demo has started and the probe would measure it"
+                    % self.held())
 
     def held(self) -> int:
         return self.debug.read_ram(HELD, 1)[0]
 
     def tap(self, sdl_scancode: int, hold_s: float = 0.4) -> int:
-        """Hold one key, sample $FF80 while it is down, release, return the byte."""
-        _focus(self.hwnd, time.monotonic() + 10)
-        _key(sdl_scancode, True)
+        """Hold one key, sample $FF80 while it is down, release, return the byte.
+
+        Sample repeatedly and keep the strongest reading either way: the game
+        clears $FF80 between polls on some frames, and a single sample could
+        land in that gap and read 0 whether or not the binding works.
+        """
+        if self.headed:
+            _focus(self.hwnd, time.monotonic() + 10)
+            _key(sdl_scancode, True)
+            try:
+                time.sleep(0.15)
+                seen = 0
+                for _ in range(12):
+                    seen |= self.held()
+                    time.sleep(0.03)
+                return seen
+            finally:
+                _key(sdl_scancode, False)
+                time.sleep(0.1)
+
+        # Headless: a real SDL_KEYDOWN, then step the guest frame by frame,
+        # from a guest state identical to every other tap's.
+        self.debug.load_state(path=str(self.base_state))
+        self.debug.step(2)
+        quiet = self.held()
+        self.debug.key(sdl_scancode, down=True)
         try:
-            # Sample repeatedly and keep the strongest reading: the game clears
-            # $FF80 between polls on some frames, and a single sample could land
-            # in that gap and read 0 whether or not the binding works.
-            time.sleep(0.15)
             seen = 0
-            for _ in range(12):
+            for _ in range(16):
+                self.debug.step(2)
                 seen |= self.held()
-                time.sleep(0.03)
-            return seen
+            # A non-zero reading before the key went down means something other
+            # than this key is driving $FF80; say so rather than fold it in.
+            return seen if not quiet else (seen | 0x100)
         finally:
-            _key(sdl_scancode, False)
-            time.sleep(0.1)
+            self.debug.key(sdl_scancode, down=False)
+            self.debug.step(2)
 
     def close(self):
         try:
@@ -246,11 +346,19 @@ def binding_of(text: str, action: str, slot: int) -> str:
 
 # ── cases ───────────────────────────────────────────────────────────────────
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--headed", action="store_true",
+                    help="drive a real focused window through user32 instead of "
+                         "the headless debug-server path, and run case 3")
+    args = ap.parse_args()
+
     if not EXE.exists():
         print(f"FAIL  build it first: {EXE}")
         return 2
     SANDBOX.mkdir(parents=True, exist_ok=True)
     failures = []
+    print("mode: " + ("HEADED (takes focus)" if args.headed
+                      else "headless (no window, no focus)"))
 
     def check(label, got, want):
         ok = got == want
@@ -262,10 +370,11 @@ def main() -> int:
     #    the stock WASD/JK secondaries still present -- so left.1 is ALSO the A
     #    key. Before the fix this read 0x21 (A | Left).
     print("case 1: rebound a.0=key:4 (A), b.0=key:29 (Z), stock secondaries")
-    game = Game("rebound", prefs(a0=SDL_A, b0=SDL_Z))
+    game = Game("rebound", prefs(a0=SDL_A, b0=SDL_Z), headed=args.headed)
     try:
         held = game.tap(SDL_A)
         check("A key -> $FF80", f"0x{held:02x}", f"0x{BIT['A']:02x}")
+        # The negative control: the whole point of the fix.
         check("A key does not also drive Left", bool(held & BIT["LEFT"]), False)
         held = game.tap(SDL_Z)
         check("Z key -> $FF80", f"0x{held:02x}", f"0x{BIT['B']:02x}")
@@ -280,7 +389,7 @@ def main() -> int:
 
     # 2. Stock defaults: the conflict rule must not cost the secondaries.
     print("case 2: stock defaults")
-    game = Game("defaults", prefs())
+    game = Game("defaults", prefs(), headed=args.headed)
     try:
         held = game.tap(SDL_RIGHT)
         check("Right arrow -> $FF80", f"0x{held:02x}", f"0x{BIT['RIGHT']:02x}")
@@ -296,9 +405,15 @@ def main() -> int:
     # 3. The other rebinding UI: the recomp-ui launcher's keybinds page. It used
     #    to write slot 0 only and never look at slot 1, which is how a player
     #    created the case-1 file in the first place.
-    print("case 3: launcher keybinds page")
-    for label, got, want in launcher_case():
-        check(label, got, want)
+    if args.headed:
+        print("case 3: launcher keybinds page (real window, driven over TCP)")
+        for label, got, want in launcher_case():
+            check(label, got, want)
+    else:
+        print("case 3: launcher keybinds page -- SKIPPED")
+        print("  the recomp-ui launcher needs a GL context (no SDL dummy driver)")
+        print("  and calls SDL_RaiseWindow unconditionally, so it cannot run")
+        print("  without taking the foreground. Run with --headed to cover it.")
 
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
     return 1 if failures else 0
@@ -311,45 +426,62 @@ LAUNCHER_SIZE = (1100, 880)
 LEFT_PRIMARY_CHIP = (848, 364)
 
 
+def wait_for_file(path: Path, deadline: float, proc) -> None:
+    """Block until `path` exists and has stopped growing."""
+    while time.monotonic() < deadline:
+        if path.exists() and path.stat().st_size > 1000:
+            return
+        if proc.poll() is not None:
+            raise RuntimeError(f"launcher exited before writing {path.name}")
+        time.sleep(0.05)
+    raise RuntimeError(f"timed out waiting for {path.name}")
+
+
 def launcher_case():
-    """Rebind LEFT to D through the real launcher page; report (label, got, want)."""
+    """Rebind LEFT to D through the real launcher page; report (label, got, want).
+
+    The click and the key both go over TCP, through the engine's pre-boot debug
+    listener (docs/DEBUG_SERVER.md, "The pre-boot launcher"): this probe sends
+    no OS-level input and never calls SetForegroundWindow. The launcher window
+    does still raise itself -- that is recomp-ui's own SDL_RaiseWindow, and it
+    is why this case is headed-only.
+    """
     folder = SANDBOX / "launcher"
-    if folder.exists():
-        shutil.rmtree(folder, ignore_errors=True)
-    folder.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(EXE, folder / EXE.name)
-    assets = EXE.parent / "assets"
-    if assets.exists():
-        shutil.copytree(assets, folder / "assets", dirs_exist_ok=True)
-    rom = next((ROOT / "roms").glob("*.gb"))
-    (folder / "rom.cfg").write_text(str(rom))
+    exe = stage(folder, assets=True)
     ini = folder / "runtime_prefs.ini"
     ini.write_text(prefs())
-
-    env = os.environ.copy()
-    env["PATH"] = "C:/msys64/mingw64/bin;" + env["PATH"]
-    for key in list(env):
-        if key.startswith(("SML2_", "LNG_")):
-            env.pop(key)
+    port = free_port()
     w, h = LAUNCHER_SIZE
-    x, y = LEFT_PRIMARY_CHIP
-    env.update(
+    before, after = folder / "before.png", folder / "after.png"
+
+    # LNG_SCRIPT carries only what TCP cannot: the window size, the view switch
+    # and the framebuffer captures (glReadPixels needs the launcher's own GL
+    # context, so a screenshot can only come from its frame callback). The long
+    # wait between the shots is the window this probe drives the page in.
+    env = clean_env(
         GBRECOMP_LAUNCHER="1", GBRECOMP_NO_LAUNCHER="0",
-        LNG_SCRIPT=f"size:{w}x{h};wait:10;view:controller;wait:10;shot:before.png;"
-                   f"wait:5;click:{x},{y};wait:600;shot:after.png;wait:5;quit")
+        GBRECOMP_DEBUG_PORT=str(port),
+        LNG_SCRIPT=f"size:{w}x{h};wait:10;view:controller;wait:10;"
+                   f"shot:before.png;wait:900;shot:after.png;wait:5;quit")
     log = open(folder / "process.log", "wb")
-    proc = subprocess.Popen([str(folder / EXE.name)], cwd=folder, env=env,
+    proc = subprocess.Popen([str(exe)], cwd=folder, env=env,
                             stdout=log, stderr=subprocess.STDOUT)
     try:
-        deadline = time.monotonic() + 60
-        hwnd = _find_window(proc.pid, deadline)
-        _focus(hwnd, deadline)
-        time.sleep(2.5)          # let the script reach the click and arm capture
-        _focus(hwnd, time.monotonic() + 10)
-        _key(SDL_D, True)
-        time.sleep(0.05)
-        _key(SDL_D, False)
-        proc.wait(timeout=60)
+        deadline = time.monotonic() + 90
+        debug = Debug(port=port, timeout=60)
+        try:
+            wait_for_file(before, deadline, proc)
+            # Arm the capture by clicking the chip, exactly as a player does.
+            # warp is off, so the host cursor never moves.
+            debug.mouse_click(*LEFT_PRIMARY_CHIP)
+            time.sleep(0.4)             # let the page redraw in "press a key"
+            debug.key(SDL_D, down=True)
+            time.sleep(0.05)
+            debug.key(SDL_D, down=False)
+            wait_for_file(after, deadline, proc)
+        finally:
+            debug.close()
+        proc.wait(timeout=90)
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -363,8 +495,8 @@ def launcher_case():
          binding_of(saved, "right", 1), "none"),
         ("launcher left keyboard.a.1 alone",
          binding_of(saved, "a", 1), "key:13"),
-        (f"launcher page screenshots written ({folder / 'after.png'})",
-         (folder / "before.png").exists() and (folder / "after.png").exists(), True),
+        (f"launcher page screenshots written ({after})",
+         before.exists() and after.exists(), True),
     ]
 
 

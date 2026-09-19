@@ -124,6 +124,77 @@
 #define SML2_ATTR_FLIP_Y   0x40u
 #define SML2_ATTR_PRIORITY 0x80u
 
+/* ---- the generic sprite emitter, and Mario's fireballs -------------------
+ *
+ * The $AD00 actor draw routine is not the only thing that puts sprites on the
+ * screen. Mario, his fireballs, enemy fire and thrown items all go through one
+ * shared emitter, reached from the ROM0 trampoline $2CF4:
+ *
+ *     00:2CF4  3E 01 / EA 4E A2 / EA 00 21   ld a,1 -> $A24E, ROMB0
+ *              C3 97 52                      jp $5297  -> bank 1
+ *
+ * whose body decodes a metasprite in exactly the actor format -- four bytes
+ * per piece (Yoff, Xoff, tile, attr), $80 in Yoff terminates:
+ *
+ *     01:529F  F0 C6        ldh a,[$FFC6]     ; metasprite index
+ *     01:52A8  21 00 40     ld hl,$4000       ; table in bank 1, 2 bytes/entry
+ *     01:52B0  26 A1 / F0 8D ld h,$A1 / ldh a,[$FF8D]  ; OAM shadow cursor
+ *     01:52B5  F0 C4        ldh a,[$FFC4]     ; screen Y  -> b
+ *     01:52B8  F0 C5        ldh a,[$FFC5]     ; screen X  -> c
+ *     01:52BB  1A / FE 80   ld a,[de] / cp $80
+ *     01:52C0  80 / 22      add a,b / ld [hl+],a      ; OAM Y = screenY + Yoff
+ *     01:52C4  81 / 22      add a,c / ld [hl+],a      ; OAM X = screenX + Xoff
+ *
+ * Both screen coordinates are EIGHT BIT, so anything the emitter draws is
+ * confined to the native 160 columns however wide the composed view is. That
+ * is why Fire Mario's fireballs vanish partway across a wide frame.
+ *
+ * Fireballs additionally keep their own table, and it holds the real 16-bit
+ * world position, so their pieces need no unwrapping at all:
+ *
+ *     00:32C1  spawn: hKeysPressed bit 1, sCurPowerup == $03, $A291/$A24F clear
+ *              ld hl,$A880 ; two slots, stride $10, scanned until l == $A0
+ *              +0 active, +1/+2 world Y (LE), +3/+4 world X (LE), +5 direction
+ *     00:3261  per-slot update and draw; screenX = X - [$FFCA] + 80 -> $FFC5,
+ *              screenY = Y - [$FFC8] + 70 -> $FFC4, then `and $F0 / cp $C0`
+ *              on each: landing in $C0..$CF DESTROYS the fireball.
+ *
+ * Measured on recomp/fixtures/dx_under_pipe_repro.state1 with sCurPowerup
+ * forced to 3: the fireball travels 3 px per frame, reaches screen X 189, and
+ * is gone the next frame -- it cannot step over the 16-wide despawn window. So
+ * vanilla destroys it at worldX = camX + 112, exactly 32 px past the right
+ * edge of the native screen.
+ */
+/* The emitter body exists in several copies, and DX relocates it exactly as it
+ * relocates the actor draw routine. Searching both images for the six bytes
+ * `F0 C4 47 F0 C5 4F` (ldh a,[$FFC4] / ld b,a / ldh a,[$FFC5] / ld c,a) finds
+ *
+ *     V1.0   01:52B5, 01:5E58
+ *     DX     01:52B5, 01:5E58, 2C:5D86, 2D:5E3A
+ *
+ * and DX reaches its copies through 01:5297 -> 01:465A, which far-calls bank
+ * $2D or $2C depending on [$FFF6] & $0F. So the tap keys on the PC, not on a
+ * bank: the CPU is inside the emitter when it fires, so ctx->rom_bank IS the
+ * emitter's bank, and the metasprite pointer table at $4000 is read out of it.
+ * These are the instructions AFTER `ldh a,[$FFC5]`, which is where the
+ * generated code leaves PC. */
+#define SML2_EMIT_PCS       { 0x52BAu, 0x5E5Du, 0x5D8Bu, 0x5E3Fu }
+#define SML2_EMIT_SCREEN_Y  0xFFC4u
+#define SML2_EMIT_SCREEN_X  0xFFC5u
+#define SML2_EMIT_INDEX     0xFFC6u
+#define SML2_EMIT_PALETTE   0xFFC7u
+#define SML2_EMIT_TABLE     0x4000u  /* metasprite pointers, bank 1          */
+/* Screen X is 8-bit. Values at or above this are the ROM's way of saying "left
+ * of the screen": the despawn window sits at $C0..$CF, so nothing legitimately
+ * lives between $C0 and here. */
+#define SML2_EMIT_X_NEGATIVE 0xD0
+
+#define SML2_FIREBALL       0xA880u
+#define SML2_FIREBALL_STRIDE 0x10u
+#define SML2_FIREBALL_SLOTS 2
+#define SML2_FIREBALL_DESPAWN 0xC0u  /* `and $F0 / cp $C0` at 00:3261        */
+#define SML2_FIREBALL_OVERSHOOT 32   /* how far past the edge vanilla lets it go */
+
 /* Status bar: one 8px window row at the bottom, window map $9C00, WX = 7. */
 #define SML2_HUD_WY        136
 #define SML2_HUD_WX        7

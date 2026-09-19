@@ -265,6 +265,7 @@ static struct {
     int scroll_tracked, scroll_cam_x, scroll_cam_y;
     uint8_t scroll_scx, scroll_scy;
     unsigned scroll_offpage;   /* frames the camera anchor could not express */
+    unsigned emitted;          /* pieces captured from the shared emitter    */
     int holding;           /* the previous frame was held                   */
     unsigned held;         /* frames held wide on an overlay                */
     unsigned held_runs;    /* distinct overlays held through                */
@@ -1056,10 +1057,93 @@ static void spawn_account(GBContext *ctx) {
 #undef SPAWN_PEEK
 }
 
+/* Every sprite the shared emitter draws, captured in WORLD coordinates.
+ *
+ * The emitter has only an 8-bit screen X to work with, so without this the
+ * things it draws -- Mario, his fireballs, enemy fire, thrown items -- stop
+ * existing at the edge of the native 160 columns no matter how wide the
+ * composed view is. Tapped at 01:52BA, the instant after the routine has read
+ * both screen coordinates and before it starts writing OAM, so everything the
+ * decode needs is live. See sml2_map.h for the disassembly.
+ *
+ * Unwrapping the screen X is safe because the ROM refuses to keep anything
+ * whose screen X reaches $C0: a value at or above $D0 can only mean "left of
+ * the screen". A fireball is better than that -- its own table carries the
+ * real 16-bit world position -- so when a piece matches a live fireball slot
+ * the exact coordinates are used instead, which is what lets the Extended
+ * boundary below push it past 255 without aliasing. */
+static const uint8_t *fireball_match(GBContext *ctx, unsigned sx, unsigned sy,
+                                     int *wx, int *wy, uint8_t *slot_buf) {
+    for (int i = 0; i < SML2_FIREBALL_SLOTS; i++) {
+        unsigned base = SML2_FIREBALL + (unsigned)i * SML2_FIREBALL_STRIDE;
+        if (!peek(ctx, base)) continue;
+        int y = peek(ctx, base + 1) | (peek(ctx, base + 2) << 8);
+        int x = peek(ctx, base + 3) | (peek(ctx, base + 4) << 8);
+        if ((unsigned)((x - s.cam_x + 80) & 0xFF) != sx) continue;
+        if ((unsigned)((y - s.cam_y + 70) & 0xFF) != sy) continue;
+        *wx = x; *wy = y;
+        (void)slot_buf;
+        return (const uint8_t *)1;
+    }
+    return NULL;
+}
+
+static void capture_emitter(GBContext *ctx) {
+    unsigned sx = peek(ctx, SML2_EMIT_SCREEN_X);
+    unsigned sy = peek(ctx, SML2_EMIT_SCREEN_Y);
+    unsigned idx = peek(ctx, SML2_EMIT_INDEX);
+    int pal = peek(ctx, SML2_EMIT_PALETTE) != 0;
+
+    /* Where the emitter's origin is in the world. */
+    int ox, oy;
+    if (!fireball_match(ctx, sx, sy, &ox, &oy, NULL)) {
+        ox = s.left + (int)(sx >= SML2_EMIT_X_NEGATIVE ? (int)sx - 256 : (int)sx);
+        oy = s.top + (int)(sy >= SML2_EMIT_X_NEGATIVE ? (int)sy - 256 : (int)sy);
+        ox -= 8;   /* the ROM's screen X is already the OAM X minus the 8 px
+                    * hardware offset that draw_sprite() undoes for OAM pieces */
+        oy -= 16;
+    } else {
+        /* Exact 16-bit world position: the emitter's origin is the OAM origin,
+         * so undo the same hardware offsets. */
+        ox = ox - 8;
+        oy = oy - 16;
+    }
+
+    /* The pointer table is at $4000 of whichever bank the emitter is running
+     * out of -- bank 1 on V1.0, $2C or $2D on DX. */
+    int bank = (int)ctx->rom_bank;
+    unsigned entry = SML2_EMIT_TABLE + idx * 2u;
+    unsigned de = (unsigned)rom_byte(ctx, bank, entry) |
+                  ((unsigned)rom_byte(ctx, bank, entry + 1) << 8);
+    if (de < 0x4000u || de >= 0x8000u) return;
+    for (int n = 0; n < SML2_MAX_PIECES && de + 3 < 0x8000u; n++, de += 4) {
+        uint8_t yraw = rom_byte(ctx, bank, de);
+        if (yraw == SML2_FRAME_HIDDEN) break;
+        if (s.build_count >= SML2_MAX_SPRITES) break;
+        Sml2Sprite *sp = &s.build[s.build_count++];
+        sp->y = oy + (int8_t)yraw;
+        sp->x = ox + (int8_t)rom_byte(ctx, bank, de + 1);
+        sp->tile = rom_byte(ctx, bank, de + 2);
+        sp->attr = rom_byte(ctx, bank, de + 3);
+        if (pal) sp->attr |= OAM_PALETTE;      /* 01:52D0 `set 4,a` */
+        s.captures++;
+        s.emitted++;
+    }
+}
+
 static void read_tap(GBContext *ctx, uint16_t address) {
+    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return;
+    if (address == SML2_EMIT_SCREEN_X) {
+        static const uint16_t pcs[] = SML2_EMIT_PCS;
+        for (unsigned i = 0; i < sizeof pcs / sizeof pcs[0]; i++) {
+            if (ctx->pc != pcs[i] && ctx->pc != (uint16_t)(pcs[i] - 2)) continue;
+            capture_emitter(ctx);
+            return;
+        }
+        return;
+    }
     if (address != SML2_TAP_ADDR || !is_draw_bank(ctx->rom_bank)) return;
     if (ctx->pc != SML2_TAP_PC && ctx->pc != SML2_TAP_PC - 2) return;
-    if (!s.wide || gb_custom_width <= GB_SCREEN_WIDTH) return;
     capture_actor(ctx);
 }
 
@@ -1931,7 +2015,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
          * one -- reading those and calling them "the camera right now" is how
          * this module twice talked itself into a wrong diagnosis. */
         "\"camera_live\":[%d,%d],\"scy_live\":%d,\"scx_live\":%d,"
-        "\"transition_flag\":%d,\"scy\":%d,\"scx\":%d,"
+        "\"transition_flag\":%d,\"scy\":%d,\"scx\":%d,\"emitted\":%u,"
         "\"sprite_pal_mask\":%u,\"sprite_bank1\":%u,"
         "\"spawn_extend\":%d,\"spawn_edge\":[%d,%d],\"spawn_reach\":[%d,%d],"
         "\"spawn_lag\":[%d,%d],\"spawn_reads\":[%u,%u,%u,%u],"
@@ -1957,7 +2041,7 @@ int sml2_adaptive_debug(const char *cmd, int id, const char *json) {
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scy : 0,
         s.ctx && s.ctx->ppu ? ((GBPPU *)s.ctx->ppu)->scx : 0,
         s.ctx ? peek(s.ctx, SML2_TRANSITION) : 0,
-        s.scy, s.scx,
+        s.scy, s.scx, s.emitted,
         s.sprite_pal_mask, s.sprite_bank1,
         s.spawn_extend, s.scan_edge[SML2_SIDE_RIGHT], s.scan_edge[SML2_SIDE_LEFT],
         s.scan_reach_max[SML2_SIDE_RIGHT], s.scan_reach_max[SML2_SIDE_LEFT],

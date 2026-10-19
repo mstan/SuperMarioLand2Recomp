@@ -13,6 +13,7 @@
  */
 #include "sml2_adaptive.h"
 #include "sml2_mods.h"
+#include "gb_snapshot.h"
 #include "sml2_map.h"
 #include "gb_body.h"
 #include "gb_custom_view.h"
@@ -248,7 +249,7 @@ typedef struct {
 static Sml2Frame s_good;
 static int s_good_valid;
 
-static struct {
+typedef struct {
     GBContext *ctx;
     int frame, valid;
     int cam_x, cam_y;        /* world centre, as the ROM keeps it */
@@ -405,7 +406,69 @@ static struct {
     int cam_prev, cam_prev_ok;
     Sml2Sprite sprite[SML2_MAX_SPRITES], build[SML2_MAX_SPRITES];
     uint8_t opaque[GB_CUSTOM_FRAME_SIZE];
-} s;
+} Sml2AdaptiveState;
+static Sml2AdaptiveState s;
+
+/* State loads and rewind must restore the previous camera/spawn edges, actor
+ * captures, fireball tracking and frozen overlay frame along with guest RAM.
+ * Keep the always-on diagnostic ledgers on the process observation timeline. */
+#define SML2_STATE_OFFSET offsetof(Sml2AdaptiveState, frame)
+#define SML2_STATE_BYTES (offsetof(Sml2AdaptiveState, opaque) - SML2_STATE_OFFSET)
+#define SML2_STATE_DIAGNOSTICS(X) \
+    X(captures) X(capture_frames) X(fallbacks) X(rescues) X(ghosts) \
+    X(gate_scene) X(gate_tile_fail) X(gate_attr_fail) X(gate_reason) \
+    X(scroll_offpage) X(emitted) X(held) X(held_runs) X(debounced) \
+    X(narrowed) X(narrowed_model) X(pillarbox_model) X(attr_byte_diff) \
+    X(gate_frames) X(flips) X(gate_log) X(gate_log_seq) X(flip_log) X(flip_log_seq) \
+    X(scan_reach_max) X(scan_lag_max) X(scan_hi) X(scan_lo) X(scan_unpaired) \
+    X(scan_resets) X(spawn_ungated) X(spawn_passed) X(spawn_spawned) \
+    X(spawn_jumped) X(spawn_scans) X(spawn_seek) X(spawn_stepped) \
+    X(spawn_ring) X(spawn_ring_n) X(fb_kept) X(fb_killed) X(fb_vanilla) \
+    X(fb_failclosed) X(fb_unmatched) X(fb_hidden) X(fb_deaths) X(fb_ring)
+static size_t state_size(GBContext *ctx) {
+    (void)ctx;
+    return sizeof(SML2ModSettings) + SML2_STATE_BYTES + sizeof(s_good) + sizeof(s_good_valid);
+}
+static bool state_save(GBContext *ctx, void *data, size_t size) {
+    if (size != state_size(ctx)) return false;
+    uint8_t *out = data;
+    memcpy(out, sml2_mod_settings(), sizeof(SML2ModSettings)); out += sizeof(SML2ModSettings);
+    memcpy(out, (const uint8_t*)&s + SML2_STATE_OFFSET, SML2_STATE_BYTES); out += SML2_STATE_BYTES;
+    memcpy(out, &s_good, sizeof(s_good)); out += sizeof(s_good);
+    memcpy(out, &s_good_valid, sizeof(s_good_valid));
+    return true;
+}
+static bool state_validate(GBContext *ctx, const void *data, size_t size) {
+    if (size != state_size(ctx) || memcmp(data, sml2_mod_settings(), sizeof(SML2ModSettings))) return false;
+    const uint8_t *state = (const uint8_t*)data + sizeof(SML2ModSettings);
+    int count, building, good_count, good_valid;
+    memcpy(&count, state + offsetof(Sml2AdaptiveState, count) - SML2_STATE_OFFSET, sizeof(count));
+    memcpy(&building, state + offsetof(Sml2AdaptiveState, build_count) - SML2_STATE_OFFSET, sizeof(building));
+    memcpy(&good_count, state + SML2_STATE_BYTES + offsetof(Sml2Frame, count), sizeof(good_count));
+    memcpy(&good_valid, state + SML2_STATE_BYTES + sizeof(s_good), sizeof(good_valid));
+    return count >= 0 && count <= SML2_MAX_SPRITES && building >= 0 && building <= SML2_MAX_SPRITES &&
+           good_count >= 0 && good_count <= SML2_MAX_SPRITES && (good_valid == 0 || good_valid == 1);
+}
+static void state_restore(GBContext *ctx, const void *data, size_t size) {
+    (void)size;
+#define DIAG_BYTES(f) uint8_t f[sizeof s.f];
+    struct { SML2_STATE_DIAGNOSTICS(DIAG_BYTES) } diagnostics;
+#undef DIAG_BYTES
+#define SAVE_DIAG(f) memcpy(diagnostics.f, &s.f, sizeof s.f);
+    SML2_STATE_DIAGNOSTICS(SAVE_DIAG)
+#undef SAVE_DIAG
+    const uint8_t *in = (const uint8_t*)data + sizeof(SML2ModSettings);
+    memcpy((uint8_t*)&s + SML2_STATE_OFFSET, in, SML2_STATE_BYTES); in += SML2_STATE_BYTES;
+    memcpy(&s_good, in, sizeof(s_good)); in += sizeof(s_good);
+    memcpy(&s_good_valid, in, sizeof(s_good_valid));
+    s.ctx = ctx;
+#define LOAD_DIAG(f) memcpy(&s.f, diagnostics.f, sizeof s.f);
+    SML2_STATE_DIAGNOSTICS(LOAD_DIAG)
+#undef LOAD_DIAG
+}
+static const GBSnapshotExtension snapshot_extension = {
+    "sml2-adaptive", 1, state_size, state_save, state_validate, state_restore
+};
 
 /* ---- host inspection: never touches the emulated bus or advances time ---- */
 
@@ -1934,6 +1997,7 @@ static void reset(GBContext *ctx) {
 /* ---- install ---- */
 
 void sml2_adaptive_init(GBContext *ctx) {
+    gb_snapshot_set_extension(NULL);
     memset(&s, 0, sizeof s);
     memset(&s_good, 0, sizeof s_good);
     s_good_valid = 0;
@@ -1961,6 +2025,7 @@ void sml2_adaptive_init(GBContext *ctx) {
         return;
     }
     gb_custom_requested_width = mods->width;
+    gb_snapshot_set_extension(&snapshot_extension);
     s.spawn_extend = mods->spawns == SML2_SPAWNS_EXTENDED;
     gb_custom_render = render;
     gb_custom_snapshot = snapshot;

@@ -56,7 +56,9 @@ param(
     # defaults to 1; that is the profile every playtest of this game has used,
     # so it is what ships unless a release deliberately opts up.
     [ValidateSet('0', '1', '2', '3')][string]$GeneratedOptLevel = '1',
-    [int]$Jobs = 0
+    [ValidateRange(1,4)][int]$Jobs = 4,
+    # Private build/verification inputs; firmware is never staged in the ZIP.
+    [string]$BiosDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -137,6 +139,7 @@ Write-Host "=== $releaseSlug v$Version (windows-x64) ==="
 
 # ── preflight ────────────────────────────────────────────────────────────────
 $engineRoot = Join-Path $root 'gb-recompiled'
+if (-not $BiosDir) { $BiosDir = Join-Path $engineRoot 'boot_roms' }
 $uiRoot = Join-Path $root 'recomp-ui'
 if (-not (Test-Path -LiteralPath (Join-Path $engineRoot 'runtime/include/gb_body.h'))) {
     throw 'gb-recompiled is not initialized: git submodule update --init gb-recompiled'
@@ -178,17 +181,17 @@ if (-not $SkipBuild) {
             "-DCMAKE_CXX_COMPILER=$ToolRoot/g++.exe",
             "-DCMAKE_MAKE_PROGRAM=$ToolRoot/ninja.exe",
             '-DGBRECOMP_RECOMP_UI=ON', '-DRECOMP_UI_ENABLE_MODS=ON',
-            "-DRECOMP_UI_ROOT=$uiRoot")
-        Invoke-Step 'build recompiler' $ninja @('-C', $engineBuild, 'gbrecomp')
+            "-DRECOMP_UI_ROOT=$uiRoot", "-DGBRECOMP_BIOS_DIR=$BiosDir")
+        Invoke-Step 'build recompiler' $ninja @('-C', $engineBuild, 'gbrecomp', "-j$Jobs")
 
         $gbrecomp = Join-Path $engineBuild 'bin/gbrecomp.exe'
         Push-Location -LiteralPath $root
         try {
             # Body 1: the faithful V1.0 build; this tree is the CMake project.
-            Invoke-Step 'generate faithful body' $gbrecomp @('--config', 'super_mario_land_2.toml')
+            Invoke-Step 'generate faithful body' $gbrecomp @('--config', 'super_mario_land_2.toml', '--jobs', "$Jobs")
             # Body 2: V1.0 + recomp/patches/sml2dx_v181.bps, [options] body_only
             # so it links into the same executable. See DX.md.
-            Invoke-Step 'generate DX body' $gbrecomp @('--config', 'super_mario_land_2_dx.toml')
+            Invoke-Step 'generate DX body' $gbrecomp @('--config', 'super_mario_land_2_dx.toml', '--jobs', "$Jobs")
         } finally { Pop-Location }
 
         Invoke-Step 'configure game' $cmake @(
@@ -200,7 +203,7 @@ if (-not $SkipBuild) {
             "-DGBRECOMP_GENERATED_OPT_LEVEL=$GeneratedOptLevel",
             '-DGBRECOMP_RECOMP_UI=ON', '-DRECOMP_UI_ENABLE_MODS=ON',
             '-DGBRECOMP_LAUNCHER_CONSOLE=gb',
-            "-DRECOMP_UI_ROOT=$uiRoot")
+            "-DRECOMP_UI_ROOT=$uiRoot", "-DGBRECOMP_BIOS_DIR=$BiosDir")
         Invoke-Step 'build game' $ninja @('-C', $gameBuild, "-j$Jobs")
     } finally {
         $env:PATH = $originalPath
@@ -341,6 +344,11 @@ if (-not $SkipVerify) {
             Copy-Item -LiteralPath $_.FullName -Destination $verify -Recurse
         }
         Set-Content -LiteralPath (Join-Path $verify 'rom.cfg') -Value $romPath -Encoding ascii
+        foreach ($model in @('dmg','cgb')) {
+            $biosPath=Join-Path $BiosDir "${model}_boot.bin"
+            if(-not (Test-Path -LiteralPath $biosPath -PathType Leaf)) { throw "Verification needs private firmware: $biosPath" }
+            Set-Content -LiteralPath (Join-Path $verify "bios_${model}.cfg") -Value ([IO.Path]::GetFullPath($biosPath)) -Encoding ascii
+        }
 
         # PATH is System32 only. Anything the exe needs must be in the stage.
         $cleanPath = "$env:SystemRoot\System32;$env:SystemRoot"
@@ -357,6 +365,11 @@ if (-not $SkipVerify) {
             $psi.RedirectStandardError = $true
             $psi.EnvironmentVariables['PATH'] = $cleanPath
             $psi.EnvironmentVariables['GBRECOMP_NO_LAUNCHER'] = '1'
+            $psi.EnvironmentVariables['GBRECOMP_HEADLESS'] = '1'
+            $psi.EnvironmentVariables['GBRECOMP_STRICT_STATIC'] = '1'
+            $psi.EnvironmentVariables['GBRECOMP_ROM_PATH'] = $romPath
+            $psi.EnvironmentVariables['GBRECOMP_STATE_DIR'] = $verify
+            $psi.EnvironmentVariables['GBRECOMP_ASSET_DIR'] = $verify
             $psi.EnvironmentVariables['GBRECOMP_DEBUG_PORT'] = "$Port"
             $psi.EnvironmentVariables['SDL_VIDEODRIVER'] = 'dummy'
             $psi.EnvironmentVariables['SDL_AUDIODRIVER'] = 'dummy'
@@ -401,7 +414,7 @@ if (-not $SkipVerify) {
 
         # 2. And it terminates cleanly under a frame limit (exit 0).
         Write-Host '[verify] clean-PATH headless run to frame limit'
-        $proc = Start-Staged '--benchmark --limit-frames 600' ($port + 1)
+        $proc = Start-Staged '--benchmark --limit-frames 6000' ($port + 1)
         $stdout = $proc.StandardOutput.ReadToEndAsync()
         $stderr = $proc.StandardError.ReadToEndAsync()
         if (-not $proc.WaitForExit(120000)) {
@@ -412,12 +425,18 @@ if (-not $SkipVerify) {
             $tail = ($stderr.Result -split "`n" | Select-Object -Last 20) -join "`n"
             throw "Staged build exited $($proc.ExitCode) from a clean PATH.`n$tail"
         }
-        if ($stdout.Result -notmatch '\[Launcher\] ROM:') {
-            throw 'Staged build never reported resolving a ROM.'
+        if (($stdout.Result + $stderr.Result) -notmatch '\[BOOT\] implementation=LLE') {
+            throw 'Staged build never reported booting the native BIOS.'
         }
         Write-Host '[verify] headless run exited 0'
     } finally {
-        Remove-Item -LiteralPath $verify -Recurse -Force -ErrorAction SilentlyContinue
+        $verifyFull=[IO.Path]::GetFullPath($verify)
+        $tempPrefix=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
+        if(-not $verifyFull.StartsWith($tempPrefix,[StringComparison]::OrdinalIgnoreCase) -or
+           -not ([IO.Path]::GetFileName($verifyFull)).StartsWith('sml2_release_verify_')) {
+            throw "Unexpected verification cleanup path: $verifyFull"
+        }
+        Remove-Item -LiteralPath $verifyFull -Recurse -Force -ErrorAction SilentlyContinue
     }
 } else {
     Write-Warning 'Clean-PATH verification skipped (-SkipVerify).'

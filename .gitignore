@@ -36,3 +36,7 @@ build-release-engine*/
 build-linux-*/
 build-macos-*/
 build-linux-prod/
+android/.gradle/
+android/.cxx/
+android/build/
+android/local.properties

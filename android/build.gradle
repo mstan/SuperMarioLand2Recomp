@@ -1,0 +1,8 @@
+plugins { id 'com.android.application' version '8.7.3' }
+def game=file('..')
+def engine=file(providers.gradleProperty('gbcEngineRoot').orElse('../gb-recompiled').get())
+ext.gbcGame=[applicationId:'com.mstan.supermarioland2recomp',title:'Super Mario Land 2 Recompiled',
+    version:new File(game,'VERSION').text.trim(),versionCode:200,romCrc:'d5ec24e4',romSize:524288,
+    dx:true,console:'gb',target:'Super_Mario_Land_2',generatedDir:'generated',
+    gameRoot:game,engineRoot:engine,uiRoot:file(providers.gradleProperty('gbcUiRoot').orElse('../recomp-ui').get())]
+apply from:new File(engine,'platform/android/app.gradle')

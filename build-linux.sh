@@ -30,7 +30,7 @@
 #   bash build-linux.sh --no-package       # configure + build only
 #   bash build-linux.sh --run              # launch the AppImage after building
 #   bash build-linux.sh --out DIR          # where to drop the .AppImage
-#   bash build-linux.sh --jobs N           # parallel build jobs (default: nproc)
+#   bash build-linux.sh --jobs N           # parallel jobs, 1..4 (default: 4)
 #
 # NOTE on --jobs: the generated bodies are multi-MB translation units. On a
 # memory-constrained host too many concurrent jobs makes the compiler die with
@@ -70,18 +70,18 @@ TOML_DX="super_mario_land_2_dx.toml"
 # whatever happens to be installed on the build host. Both projects publish only
 # a rolling "continuous" release, so these digests DO rotate upstream: on a
 # checksum mismatch, verify the new artifact and re-pin here (or export
-# LINUXDEPLOY_SHA / APPIMAGETOOL_SHA for a one-off build). Verified 2026-09-16;
-# appimagetool's digest is the same one the snesrecomp Linux releases pin.
+# LINUXDEPLOY_SHA / APPIMAGETOOL_SHA for a one-off build). Verified 2026-10-18
+# against the upstream release asset digests and the downloaded tools.
 LINUXDEPLOY_URL="${LINUXDEPLOY_URL:-https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage}"
-LINUXDEPLOY_SHA="${LINUXDEPLOY_SHA:-36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62}"
+LINUXDEPLOY_SHA="${LINUXDEPLOY_SHA:-8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1}"
 APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage}"
-APPIMAGETOOL_SHA="${APPIMAGETOOL_SHA:-a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0}"
+APPIMAGETOOL_SHA="${APPIMAGETOOL_SHA:-95cbe7cce9717fce90c484e34052ee7c7f1d7635b33c12525b4776826a7d29b6}"
 
 DO_REGEN=1
 DO_RUN=0
 DO_PACKAGE=1
 VERSION=""
-JOBS="$(nproc 2>/dev/null || echo 4)"
+JOBS=4
 REPO="$(cd "$(dirname "$0")" && pwd)"
 OUT="$REPO/release-linux"
 
@@ -98,6 +98,8 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
+
+[[ "$JOBS" =~ ^[1-4]$ ]] || { echo "--jobs must be between 1 and 4" >&2; exit 2; }
 
 # Default the version to the VERSION file, then to the checked-out tag, so a
 # release build cannot ship stamped "dev" by accident; --version always wins.
@@ -147,7 +149,7 @@ if [ "$DO_REGEN" = "1" ]; then
   echo "[0/5] ROM CRC32 $got OK"
 
   echo "[1/5] build gbrecomp"
-  cmake -S "$ENGINE" -B "$ENGINE_BUILD" -DCMAKE_BUILD_TYPE=Release \
+  cmake -G Ninja -S "$ENGINE" -B "$ENGINE_BUILD" -DCMAKE_BUILD_TYPE=Release \
       -DGBRECOMP_RECOMP_UI=ON -DRECOMP_UI_ENABLE_MODS=ON -DRECOMP_UI_ROOT="$UI"
   cmake --build "$ENGINE_BUILD" --target gbrecomp -j"$JOBS"
 
@@ -168,7 +170,7 @@ fi
 
 # ── build ───────────────────────────────────────────────────────────────────
 echo "[3/5] configure + build the game (-j$JOBS)"
-cmake -S "$REPO/generated" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release \
+cmake -G Ninja -S "$REPO/generated" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release \
     -DGBRECOMP_RECOMP_UI=ON -DRECOMP_UI_ENABLE_MODS=ON \
     -DGBRECOMP_LAUNCHER_CONSOLE=gb -DRECOMP_UI_ROOT="$UI"
 cmake --build "$BUILD" --target "$CMAKE_TARGET" -j"$JOBS"
@@ -375,7 +377,7 @@ chmod +x "$APPDIR/AppRun"
 
 APP="$OUT/$RELEASE_SLUG-linux-$VERSION-x86_64.AppImage"
 rm -f "$APP"
-ARCH=x86_64 "${APPIMAGETOOL[@]}" "$APPDIR" "$APP"
+ARCH=x86_64 "${APPIMAGETOOL[@]}" --mksquashfs-opt=-processors --mksquashfs-opt="$JOBS" "$APPDIR" "$APP"
 chmod +x "$APP"
 echo "      BUILT: $APP ($(du -h "$APP" | cut -f1))"
 

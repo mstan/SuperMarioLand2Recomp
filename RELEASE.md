@@ -3,12 +3,13 @@
 This file is the canonical *how to cut a release*. Per-version notes belong on
 the GitHub release itself, not here.
 
-## Assets: one archive per platform, only archives
+## Assets: one package per platform
 
 | asset | built by | state |
 |---|---|---|
 | `SuperMarioLand2Recomp-windows-x64-v<Version>.zip` | `make_release.ps1` | verified end-to-end on this machine |
-| `SuperMarioLand2Recomp-linux-<Version>-x86_64.AppImage` | `build-linux.sh` | verified end-to-end (WSL2 Ubuntu 24.04) |
+| `SuperMarioLand2Recomp-linux-<Version>-x86_64.AppImage` | `build-linux.sh` | verified on Ubuntu 22.04 build / WSL2 runtime |
+| `SuperMarioLand2Recomp-android-arm64-v<Version>.apk` | shared Android host | signed/ABI/payload checks; device gameplay QA owner-waived |
 | `SuperMarioLand2Recomp-macos-<Version>-<arch>.dmg` / `.zip` | `build-macos.sh` | **untested on this machine — no Mac here** |
 
 Never publish a bare `Super_Mario_Land_2.exe`. It is useless without the
@@ -50,6 +51,23 @@ state, and the game writes them next to itself — which is why the Windows
 script runs its start-up check against a *copy* of the stage and archives the
 pristine one.
 
+## Firmware and state compatibility
+
+Native LLE builds need private `dmg_boot.bin` (256 bytes) and `cgb_boot.bin`
+(2304 bytes) in `gb-recompiled/boot_roms/`. `make_release.ps1 -BiosDir` can
+override that directory. Verification prefills firmware paths only in a
+temporary private copy; firmware and path caches never enter the archive.
+The clean-PATH run now enforces strict static execution for 6,000 frames.
+
+Players supply the original DMG BIOS for faithful mode and CGB BIOS for DX.
+The launcher verifies the selected firmware before Play. Earlier savestates
+are incompatible with the shared codec; battery saves remain compatible.
+
+Android builds follow [the shared host instructions](gb-recompiled/platform/android/README.md).
+They import verified user-owned inputs through SAF and prefill the launcher.
+Record the stable signing certificate and the explicit device QA waiver in
+the release evidence. No private assets or signing credentials are packaged.
+
 ## The CRC gate
 
 There is exactly one supported cart:
@@ -77,7 +95,7 @@ Every packaging script enforces the gate twice:
 
 ## Versioning
 
-`VERSION` at the repo root is the source of truth; it currently reads `0.1.0`.
+`VERSION` at the repo root is the source of truth; it currently reads `0.2.0`.
 All three scripts read it when no `--version` / `-Version` is passed, then fall
 back to an exact-match git tag, then to `dev`.
 
@@ -118,8 +136,8 @@ runs a copy of the staged tree twice:
   (`GBRECOMP_DEBUG_PORT`, default 4370). The reply carries a frame counter, so
   a nonzero frame number proves the recompiled body is *executing*, not merely
   that the process loaded;
-* again with `--limit-frames 600`, asserting exit code 0 and that the launcher
-  reported resolving a ROM.
+* again with `--limit-frames 6000` and strict static execution, asserting exit
+  code 0, a resolved ROM and native LLE firmware boot.
 
 The zip is written with portable (`/`) entry names and then re-read to reject
 any Windows-only name. With `Compress-Archive`'s backslash names a Proton or
@@ -132,7 +150,7 @@ The zip lands in `release-stage\` (gitignored).
 
 ```bash
 bash build-linux.sh                     # version from VERSION
-bash build-linux.sh --version 0.2.0 --jobs 8
+bash build-linux.sh --version 0.2.0 --jobs 4
 bash build-linux.sh --no-regen          # reuse an existing generated/ tree
 ```
 
@@ -176,7 +194,7 @@ launcher opens with the ROM already resolved.
 There is no Linux box here; the AppImage is built through WSL2:
 
 ```powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/f/Projects/gbcrecomp/<worktree> && bash build-linux.sh --jobs 8"
+wsl -d Ubuntu -- bash -lc "cd /mnt/f/Projects/gbcrecomp/<worktree> && bash build-linux.sh --jobs 4"
 ```
 
 Ubuntu 24.04 under WSL2 builds and packages fine, and the produced AppImage

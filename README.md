@@ -2,6 +2,17 @@
 
 # Super Mario Land 2: 6 Golden Coins — Recompiled
 
+Release v0.2.0 requires original boot firmware: the 256-byte DMG BIOS for
+faithful mode and the 2304-byte CGB BIOS for DX. Select it under **Settings >
+System** before Play. No ROM or BIOS is distributed. Previous savestates are
+incompatible; battery saves remain compatible.
+
+The Android ARM64 APK imports the supported V1.0 ROM and firmware once, then
+prefills the shared launcher. Its Mods page selects DX and widescreen. The
+**Touch controls** toggle reveals the pad and Rewind; gamepads also work.
+Android device gameplay validation was waived for this release. Source builds
+use [the shared host instructions](gb-recompiled/platform/android/README.md).
+
 Static recompilation of the Game Boy title *Super Mario Land 2 - 6 Golden Coins
 (UE) (V1.0)* (CRC32 `D5EC24E4`) to native code via
 [gbrecompiled](https://github.com/mstan/gbrecompiled), with the shared

@@ -16,7 +16,7 @@
 00:0264 UnknownJump_0x0264 ; @label
 00:0279 UnknownRJump_0x0279 ; @label
 00:028D UnknownRJump_0x028D ; @label
-00:029F Data_00_029F ; @data @size=14
+00:029F UnknownJump_0x029F ; @label
 00:02AD UnknownCall_0x02AD ; @function
 00:02B0 Data_00_02B0 ; @data @size=79
 00:02FF UnknownCall_0x02FF ; @function
@@ -263,7 +263,7 @@
 00:20EB UnknownJump_0x20EB ; @label
 00:210E UnknownRJump_0x210E ; @label
 00:211E UnknownRJump_0x211E ; @label
-00:2131 Data_00_2131 ; @data @size=30
+00:2131 UnknownRJump_0x2131 ; @label
 00:214F UnknownRJump_0x214F ; @label
 00:2153 Data_00_2153 ; @data @size=15
 00:2162 UnknownRJump_0x2162 ; @label
@@ -273,12 +273,12 @@
 00:218C UnknownRJump_0x218C ; @label
 00:2190 Data_00_2190 ; @data @size=8
 00:2198 UnknownRJump_0x2198 ; @label
-00:21A7 Data_00_21A7 ; @data @size=65
+00:21A7 UnknownRJump_0x21A7 ; @label
 00:21E8 UnknownJump_0x21E8 ; @label
 00:21EE UnknownJump_0x21EE ; @label
 00:2202 UnknownCall_0x2202 ; @function
-00:222E Data_00_222E ; @data @size=32
-00:224E Data_00_224E ; @data @size=107
+00:222E UnknownRJump_0x222E ; @label
+00:224E UnknownRJump_0x224E ; @label
 00:22B9 UnknownJump_0x22B9 ; @label
 00:22BE UnknownRJump_0x22BE ; @label
 00:22C4 Data_00_22C4 ; @data @size=17
@@ -375,7 +375,7 @@
 00:3120 UnknownRJump_0x3120 ; @label
 00:3127 UnknownRJump_0x3127 ; @label
 00:314B UnknownRJump_0x314B ; @label
-00:3150 Data_00_3150 ; @data @size=12
+00:3150 UnknownJump_0x3150 ; @label
 00:315C UnknownCall_0x315C ; @function
 00:3186 UnknownRJump_0x3186 ; @label
 00:319F UnknownCall_0x319F ; @function
@@ -432,7 +432,7 @@
 00:38CE UnknownJump_0x38CE ; @label
 00:38E5 UnknownRJump_0x38E5 ; @label
 00:38F5 UnknownRJump_0x38F5 ; @label
-00:3911 Data_00_3911 ; @data @size=239
+00:3911 UnknownRJump_0x3911 ; @label
 00:3A3C Data_00_3A3C ; @data @size=20
 00:3AC8 Data_00_3AC8 ; @data @size=20
 00:3C94 UnknownCall_0x3C94 ; @function
@@ -558,12 +558,12 @@
 01:5DB4 UnknownRJump_0x5DB4 ; @label
 01:5DCB UnknownRJump_0x5DCB ; @label
 01:5DF2 Data_01_5DF2 ; @data @size=7
-01:5DF9 Data_01_5DF9 ; @data @size=10
+01:5DF9 UnknownRJump_0x5DF9 ; @label
 01:5E03 UnknownRJump_0x5E03 ; @label
 01:5E12 UnknownRJump_0x5E12 ; @label
 01:5E31 UnknownRJump_0x5E31 ; @label
 01:5E42 Data_01_5E42 ; @data @size=1536
-01:6442 Data_01_6442 ; @data @size=67
+01:6442 UnknownCall_0x6442 ; @function
 01:6485 UnknownJump_0x6485 ; @label
 01:64CB UnknownRJump_0x64CB ; @label
 01:64F4 UnknownRJump_0x64F4 ; @label

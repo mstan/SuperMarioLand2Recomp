@@ -22,6 +22,18 @@ The ROM is **not** included; supply your own at
 ROM this build accepts, for either body — the DX image is derived from it and is
 never asked for.
 
+The default native BIOS build needs private `dmg_boot.bin` (256 bytes) and
+`cgb_boot.bin` (2304 bytes) under `gb-recompiled/boot_roms/`, or a CMake
+`GBRECOMP_BIOS_DIR` path. Select the DMG BIOS for the faithful game and the CGB
+BIOS for DX in **Settings → System**. The launcher remembers both paths and
+rechecks the requirement when the DX option changes. Firmware is not included.
+
+Hold **R** to rewind. File states and rb-engine rewind now restore the adaptive
+camera, actor/spawn tracking and frozen transition image with guest state.
+Version-1 states are incompatible. Both bodies passed 6,500-frame strict routes
+at 16:9 and 32:9, including pause/resume and save/rewind checks with zero
+interpreter execution; this is route coverage, not a complete playthrough.
+
 ## Screenshots
 
 | Faithful (Game Boy) | DX color mod (Game Boy Color) |
@@ -44,7 +56,7 @@ hardware PPU, the margins are rebuilt from the same level data the game is runni
 ## Build (Windows, MSYS2 MinGW64 first on PATH)
 
 ```powershell
-git submodule update --init gb-recompiled recomp-ui
+git submodule update --init --recursive gb-recompiled recomp-ui
 $T='C:\msys64\mingw64\bin'
 cmake -G Ninja -S gb-recompiled -B gb-recompiled/build -DCMAKE_C_COMPILER=$T/gcc.exe -DCMAKE_CXX_COMPILER=$T/g++.exe -DCMAKE_MAKE_PROGRAM=$T/ninja.exe -DGBRECOMP_RECOMP_UI=ON -DRECOMP_UI_ENABLE_MODS=ON -DRECOMP_UI_ROOT=$PWD/recomp-ui
 ninja -C gb-recompiled/build gbrecomp

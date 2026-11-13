@@ -13,7 +13,7 @@
 #include "sml2_adaptive.h"
 #include "recomp_launcher.h"
 #include "debug_server.h"
-#include <SDL.h>
+#include "gb_host_paths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,14 +80,15 @@ static char config_path[1024], base_dir[1024], error[160];
 
 static int valid_width(int width) { return width == -1 || (width >= 160 && width <= 4096); }
 
-static void load(const char *base) {
+static void load(void) {
     if (loaded) return;
     loaded = 1;
-    settings = (SML2ModSettings){ 0, -1, 0, SML2_SPAWNS_EXTENDED };
-    snprintf(base_dir, sizeof(base_dir), "%s%s", base ? base : "",
-             base && base[0] && base[strlen(base) - 1] != '/' && base[strlen(base) - 1] != '\\'
-                 ? "/" : "");
-    snprintf(config_path, sizeof(config_path), "%s" CONFIG_NAME, base_dir);
+    settings = (SML2ModSettings){ 1, -1, 0, SML2_SPAWNS_EXTENDED };
+    /* Branding reads settings before game_get_mods() receives its directory.
+     * Resolve both entry points through the same shared host policy: Android
+     * libraries and packaged assets are not writable user state. */
+    snprintf(base_dir, sizeof(base_dir), "%s", gb_host_asset_dir());
+    gb_host_state_path(CONFIG_NAME, config_path, sizeof(config_path));
     FILE *f = fopen(config_path, "r");
     if (f) {
         char line[256], key[64];
@@ -151,11 +152,7 @@ int sml2_dx_patch_available(void) {
 }
 
 const SML2ModSettings *sml2_mod_settings(void) {
-    if (!loaded) {
-        char *base = SDL_GetBasePath();
-        load(base);
-        SDL_free(base);
-    }
+    load();
     return &settings;
 }
 
@@ -415,7 +412,8 @@ static const char *last_error(void *ctx) { (void)ctx; return error; }
 
 const RecompLauncherCModProvider *sml2_mod_provider(const char *exe_dir) {
     static RecompLauncherCModProvider provider;
-    load(exe_dir);
+    (void)exe_dir;
+    load();
     memset(&provider, 0, sizeof(provider));
     provider.package_count = count;
     provider.package_get = package_get;

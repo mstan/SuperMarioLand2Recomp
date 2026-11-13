@@ -26,7 +26,7 @@ boot. The launcher's Mods page picks between them — see `DX.md`.
 - `super_mario_land_2_dx.toml` — DX body (V1.0 + `recomp/patches/sml2dx_v181.bps`)
 - `extras.c` — game hooks (launcher name/platform, ROM CRC gate, mods)
 - `recomp/launcher/boxart.tga` — launcher box art
-- `ADAPTIVE.md` — opt-in adaptive widescreen mod (see Mods in the launcher)
+- `ADAPTIVE.md` — adaptive widescreen settings (see Mods in the launcher)
 
 The ROM is **not** included; supply your own at
 `roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb`. That is the only
@@ -78,9 +78,11 @@ ninja -C generated/build
 generated/build/Super_Mario_Land_2.exe
 ```
 
-## Mods (opt-in, default off)
+## Mods
 
-- **Adaptive widescreen** — Fit to window, 16:9, 21:9, 32:9. See `ADAPTIVE.md`.
+- **Adaptive widescreen** — enabled with Fit to window for a fresh profile;
+  16:9, 21:9 and 32:9 are also available. Existing saved choices, including
+  Off, remain authoritative. See `ADAPTIVE.md`.
 - **DX color** — Super Mario Land 2 DX v1.8.1 by toruzz. Off, the game runs
   faithfully; on, the DX patch is applied to your ROM in memory at boot and the
   Game Boy Color build runs instead. Separate save file. Works together with

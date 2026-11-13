@@ -76,6 +76,9 @@ class ModPaths(unittest.TestCase):
         self.assertTrue((self.state / "sml2-mods.ini").is_file())
         self.assertFalse((self.assets / "sml2-mods.ini").exists())
 
+    def test_fresh_defaults_enable_fit(self):
+        self.run_provider("read", 1, -1, 0, 1)
+
     def test_android_null_base_uses_private_state(self):
         self.env["SML2_TEST_NULL_BASE"] = "1"
         self.run_provider("write", 1, 336, 0, 1)

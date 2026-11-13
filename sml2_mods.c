@@ -83,7 +83,7 @@ static int valid_width(int width) { return width == -1 || (width >= 160 && width
 static void load(void) {
     if (loaded) return;
     loaded = 1;
-    settings = (SML2ModSettings){ 0, -1, 0, SML2_SPAWNS_EXTENDED };
+    settings = (SML2ModSettings){ 1, -1, 0, SML2_SPAWNS_EXTENDED };
     /* Branding reads settings before game_get_mods() receives its directory.
      * Resolve both entry points through the same shared host policy: Android
      * libraries and packaged assets are not writable user state. */

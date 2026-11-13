@@ -92,6 +92,15 @@ Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 
 ## Driving a build over TCP (probes)
 
+Mod settings use the shared writable state directory, including private app
+storage on Android. Bundled DX data uses the asset directory. This applies
+even when launcher branding reads settings before the Mods provider is attached.
+The path/persistence regression needs no ROM, BIOS or window:
+
+```sh
+python tools/test_mods_paths.py --cc gcc
+```
+
 The engine's debug server (`localhost:4370`, JSON-per-line) can load a save
 state, step frames, press buttons and screenshot the presented frame. Its full
 command list is `gb-recompiled/docs/DEBUG_SERVER.md`; `tools/tcp.py` is the

@@ -1,0 +1,12 @@
+{
+  "engine_revision": "2fd554ee76718898268bd9d3e8a5cc6191eed36d",
+  "default": "sml2",
+  "games": {
+    "sml2": {
+      "title": "Super Mario Land 2: 6 Golden Coins",
+      "model": "dmg",
+      "sha256": "42045a1642f77b568534ab85b9db93c8a33d2b95c38ae84c987f497e8d52f97f",
+      "boxart": "assets/boxart/sml2.tga"
+    }
+  }
+}

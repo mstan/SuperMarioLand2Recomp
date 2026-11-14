@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.24)
+project(sml2 LANGUAGES C CXX)
+set(GBCLLR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/gbcllr" CACHE PATH "Pinned gbcllr source checkout")
+if(NOT EXISTS "${GBCLLR_ROOT}/cmake/GBCLLRGame.cmake")
+  message(FATAL_ERROR "Set GBCLLR_ROOT to the engine checkout recorded in games.json")
+endif()
+include("${GBCLLR_ROOT}/cmake/GBCLLRGame.cmake")
+gbcllr_game("${CMAKE_CURRENT_SOURCE_DIR}/games.json")

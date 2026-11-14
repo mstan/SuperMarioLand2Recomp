@@ -2,6 +2,42 @@
 
 # Super Mario Land 2: 6 Golden Coins — Recompiled
 
+## Windows and Linux desktop CMake build
+
+The desktop CMake entry point uses the gbcllr revision pinned in
+[`games.json`](games.json), the shared GB/GBC launcher and native presentation
+services. Gameplay executes the original cartridge unchanged. One runtime
+supports enhanced Fit/color presentation and stock play with the enhancement
+disabled in Mods. Existing saved mod/aspect choices and native saves are kept.
+
+Obtain gbcllr at `engine_revision` and initialize its pinned submodules. Supply
+the original V1.0 cartridge with SHA256
+`42045a1642f77b568534ab85b9db93c8a33d2b95c38ae84c987f497e8d52f97f`, a matching
+DMG boot ROM, and the native color data described by the engine's
+`qa/SML2-COLOR.md`. The color donor supplies presentation data; its guest code
+does not run in this desktop path. Requires CMake 3.24+, Ninja, Python 3.11+,
+SDL2/OpenGL and GCC or Clang with GNU C extensions (MinGW-w64 on Windows).
+
+```sh
+cmake -S . -B build-desktop -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DGBCLLR_ROOT="/path/to/gbcllr" \
+  -DGBCLLR_ROM="/path/to/original/game.rom" \
+  -DGBCLLR_BOOT_ROM="/path/to/dmg_boot.bin" \
+  -DGBCLLR_SML2_COLOR_DATA="/path/to/generated-sml2-color-data"
+cmake --build build-desktop --target game-launchers --parallel 1
+```
+
+Open `Play.cmd` (Windows) or `Play.sh` (Linux) beside `gbcllr-run`. The title's
+qualified instruction/audio/picture/clock profile is selected automatically;
+there is no backend choice to configure. Fresh enhanced profiles use Fit and
+color, while explicit saved choices remain authoritative. Save states are
+specific to the current build; native in-game saves remain supported.
+
+This addition preserves the existing Android and legacy source workflows below.
+It does not migrate Android to gbcllr or change the legacy engine/UI pins.
+
+## Existing Android and legacy workflows
+
 Release v0.2.0 requires original boot firmware: the 256-byte DMG BIOS for
 faithful mode and the 2304-byte CGB BIOS for DX. Select it under **Settings >
 System** before Play. No ROM or BIOS is distributed. Previous savestates are

@@ -33,12 +33,13 @@ there is no backend choice to configure. Fresh enhanced profiles use Fit and
 color, while explicit saved choices remain authoritative. Save states are
 specific to the current build; native in-game saves remain supported.
 
-This addition preserves the existing Android and legacy source workflows below.
-It does not migrate Android to gbcllr or change the legacy engine/UI pins.
+The desktop CMake path is separate from the Android and legacy source workflows
+below. Android continues to use its qualified pinned gb-recompiled runtime and
+shared UI; it does not migrate to gbcllr.
 
 ## Existing Android and legacy workflows
 
-Release v0.2.0 requires original boot firmware: the 256-byte DMG BIOS for
+Android preview [v0.2.1-rc.1](https://github.com/mstan/SuperMarioLand2Recomp/releases/tag/v0.2.1-rc.1) requires original boot firmware: the 256-byte DMG BIOS for
 faithful mode and the 2304-byte CGB BIOS for DX. Select it under **Settings >
 System** before Play. No ROM or BIOS is distributed. Previous savestates are
 incompatible; battery saves remain compatible.
@@ -46,8 +47,8 @@ incompatible; battery saves remain compatible.
 The Android ARM64 APK imports the supported V1.0 ROM and firmware once, then
 prefills the shared launcher. Its Mods page selects DX and widescreen. The
 **Touch controls** toggle reveals the pad and Rewind; gamepads also work.
-Android device gameplay validation was waived for this release. Source builds
-use [the shared host instructions](gb-recompiled/platform/android/README.md).
+The preview includes the writable-settings startup, launcher density and touch
+control fixes. Source builds use [the shared host instructions](gb-recompiled/platform/android/README.md).
 
 Static recompilation of the Game Boy title *Super Mario Land 2 - 6 Golden Coins
 (UE) (V1.0)* (CRC32 `D5EC24E4`) to native code via
@@ -62,7 +63,7 @@ boot. The launcher's Mods page picks between them — see `DX.md`.
 - `super_mario_land_2_dx.toml` — DX body (V1.0 + `recomp/patches/sml2dx_v181.bps`)
 - `extras.c` — game hooks (launcher name/platform, ROM CRC gate, mods)
 - `recomp/launcher/boxart.tga` — launcher box art
-- `ADAPTIVE.md` — opt-in adaptive widescreen mod (see Mods in the launcher)
+- `ADAPTIVE.md` — adaptive widescreen settings (see Mods in the launcher)
 
 The ROM is **not** included; supply your own at
 `roms/Super Mario Land 2 - 6 Golden Coins (UE) (V1.0) [!].gb`. That is the only
@@ -114,9 +115,11 @@ ninja -C generated/build
 generated/build/Super_Mario_Land_2.exe
 ```
 
-## Mods (opt-in, default off)
+## Mods
 
-- **Adaptive widescreen** — Fit to window, 16:9, 21:9, 32:9. See `ADAPTIVE.md`.
+- **Adaptive widescreen** — enabled with Fit to window for a fresh profile;
+  16:9, 21:9 and 32:9 are also available. Existing saved choices, including
+  Off, remain authoritative. See `ADAPTIVE.md`.
 - **DX color** — Super Mario Land 2 DX v1.8.1 by toruzz. Off, the game runs
   faithfully; on, the DX patch is applied to your ROM in memory at boot and the
   Game Boy Color build runs instead. Separate save file. Works together with
@@ -127,6 +130,15 @@ Or from PowerShell: `.\Launch.ps1 -Build`, then `.\Launch.ps1 -DX` /
 `.\Launch.ps1 -Faithful` to seed the toggle.
 
 ## Driving a build over TCP (probes)
+
+Mod settings use the shared writable state directory, including private app
+storage on Android. Bundled DX data uses the asset directory. This applies
+even when launcher branding reads settings before the Mods provider is attached.
+The path/persistence regression needs no ROM, BIOS or window:
+
+```sh
+python tools/test_mods_paths.py --cc gcc
+```
 
 The engine's debug server (`localhost:4370`, JSON-per-line) can load a save
 state, step frames, press buttons and screenshot the presented frame. Its full

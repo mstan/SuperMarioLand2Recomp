@@ -1,9 +1,12 @@
 # Adaptive widescreen
 
-An opt-in mod that renders Super Mario Land 2's world across the whole window
+An optional mod that renders Super Mario Land 2's world across the whole window
 instead of the Game Boy's 160x144 crop. The emulated hardware stays native: the
 PPU still renders 160x144, the save-state layout is unchanged, and with the mod
 off the executable is byte-for-byte the faithful build.
+
+Fresh profiles enable Fit to window. Saved settings, including an explicit
+Off choice or a fixed aspect, keep their existing values.
 
 Supported ROM: **Super Mario Land 2 - 6 Golden Coins (UE) (V1.0)**, CRC32
 `0xD5EC24E4` — the one cart this project asks for. Every address below was
